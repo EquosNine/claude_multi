@@ -1,0 +1,26 @@
+{
+  "name": "claude-multi",
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "server": "bun run server.ts",
+    "start": "bun run build && bun run server.ts"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@types/markdown-it": "^14.1.2",
+    "svelte": "^5.0.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "^5.5.0",
+    "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.81",
+    "highlight.js": "^11.11.1",
+    "markdown-it": "^14.1.1"
+  }
+}
