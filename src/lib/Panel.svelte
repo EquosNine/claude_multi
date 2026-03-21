@@ -119,6 +119,24 @@
     handleSend('Continue where we left off.', session.id);
   }
 
+  let showMoveMenu = $state(false);
+  let otherTabs = $derived(panelStore.tabGroups.filter(g => g !== panel.group));
+
+  function moveToTab(group: string) {
+    showMoveMenu = false;
+    panelStore.movePanel(panel.id, group);
+  }
+
+  $effect(() => {
+    if (!showMoveMenu) return;
+    function onOutside(e: MouseEvent) {
+      const target = e.target as Element;
+      if (!target.closest('.move-wrap')) showMoveMenu = false;
+    }
+    window.addEventListener('mousedown', onOutside);
+    return () => window.removeEventListener('mousedown', onOutside);
+  });
+
   let copyFeedback = $state('');
 
   async function handleCopy() {
@@ -207,6 +225,18 @@
           {copyFeedback || 'CP'}
         </button>
         <button class="action-btn" title="Download .md" onclick={handleExport}>DL</button>
+      {/if}
+      {#if otherTabs.length > 0}
+        <div class="move-wrap">
+          <button class="action-btn" title="Move to tab" onclick={() => showMoveMenu = !showMoveMenu}>MV</button>
+          {#if showMoveMenu}
+            <div class="move-menu">
+              {#each otherTabs as tab}
+                <button class="move-item" onclick={() => moveToTab(tab)}>{tab}</button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       {/if}
       <button class="close-btn" title="Remove panel" onclick={handleClose}>&times;</button>
     </div>
@@ -381,6 +411,37 @@
     transition: color 0.15s;
   }
   .close-btn:hover { color: var(--red); }
+
+  /* ---- Move to tab ---- */
+  .move-wrap {
+    position: relative;
+  }
+  .move-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: var(--surface-high);
+    border: 1px solid var(--outline-dim);
+    border-radius: var(--radius);
+    z-index: 100;
+    min-width: 100px;
+    padding: 2px 0;
+  }
+  .move-item {
+    display: block;
+    width: 100%;
+    padding: 5px 10px;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-family: 'Fira Code', monospace;
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .move-item:hover { background: rgba(204, 151, 255, 0.1); color: var(--accent); }
 
   /* ---- CWD bar ---- */
   .cwd-bar {

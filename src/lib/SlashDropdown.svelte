@@ -3,21 +3,29 @@
   import { panelStore } from './stores/panels.svelte';
   import type { SlashCommand } from './types';
 
-  let { filter, onSelect, onClose, panelId, cwd, onResume }: {
+  let { filter, onSelect, onInsert, onClose, panelId, cwd, onResume, extraCmds = [] }: {
     filter: string;
     onSelect: (prompt: string) => void;
+    onInsert: (text: string) => void;
     onClose: () => void;
     panelId: number;
     cwd: string;
     onResume: () => void;
+    extraCmds?: SlashCommand[];
   } = $props();
 
   let selectedIndex = $state(0);
   let dropdownEl: HTMLDivElement;
 
+  let allCmds = $derived.by(() => {
+    const builtinCmds = new Set(SLASH_COMMANDS.map(c => c.cmd));
+    const deduped = extraCmds.filter(c => !builtinCmds.has(c.cmd));
+    return [...SLASH_COMMANDS, ...deduped];
+  });
+
   let filteredCmds = $derived.by(() => {
     const query = filter.toLowerCase().slice(1);
-    return SLASH_COMMANDS.filter(c => c.cmd.slice(1).startsWith(query));
+    return allCmds.filter(c => c.cmd.slice(1).includes(query));
   });
 
   // Reset selection when filter changes
@@ -32,7 +40,7 @@
   });
 
   function executeCmd(cmd: SlashCommand) {
-    if (cmd.type === 'client') {
+    if (cmd.type === 'client' || cmd.cat === 'client') {
       if (cmd.cmd === '/clear') {
         panelStore.clearMessages(panelId);
         onSelect('');
@@ -84,7 +92,7 @@
       type: 'system',
       text: `> ${cmd.cmd}`,
     });
-    onSelect(`${cmd.cmd} ${cmd.desc}`);
+    onSelect(cmd.cmd);
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -96,7 +104,12 @@
       e.preventDefault();
       selectedIndex = Math.max(selectedIndex - 1, 0);
       scrollSelectedIntoView();
-    } else if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      if (filteredCmds[selectedIndex]) {
+        onInsert(filteredCmds[selectedIndex].cmd);
+      }
+    } else if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (filteredCmds[selectedIndex]) {
         executeCmd(filteredCmds[selectedIndex]);

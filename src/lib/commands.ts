@@ -103,6 +103,9 @@ export const CATEGORY_LABELS: Record<string, string> = {
   cro: "CRO",
   email: "Email",
   integrations: "Integrations",
+  "my-skills": "My Skills",
+  "project-cmds": "Project Commands",
+  "project-agents": "Project Agents",
 };
 
 export const CATEGORY_COLORS: Record<string, string> = {
@@ -117,4 +120,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
   cro: "var(--green)",
   email: "var(--blue)",
   integrations: "var(--text-dim)",
+  "my-skills": "#cc97ff",
+  "project-cmds": "#6dfe9c",
+  "project-agents": "#5ea3fa",
 };

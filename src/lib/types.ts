@@ -53,11 +53,20 @@ export interface AgentDetail {
   output: string;     // accumulated result text
 }
 
+export interface CostData {
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  durationMs: number | null;
+}
+
 export interface SlashCommand {
   cmd: string;
   desc: string;
   cat: string;
-  type: 'client' | 'skill';
+  type?: 'client' | 'skill';
 }
 
 // WebSocket message types (server -> client)

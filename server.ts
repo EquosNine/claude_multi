@@ -1,11 +1,12 @@
 import { type ServerWebSocket } from "bun";
 import { join } from "path";
-import { existsSync, statSync, readdirSync } from "fs";
+import { existsSync, statSync, readdirSync, readFileSync, mkdirSync } from "fs";
 import { unstable_v2_createSession, unstable_v2_resumeSession, type SDKSession } from "@anthropic-ai/claude-agent-sdk";
 import { spawn as spawnPty, type IPty } from "node-pty";
 
 const PORT = 3456;
 const MAX_PANELS = 6;
+const MAX_QUEUE_SIZE = 20;
 
 // ── Panel Session ──
 
@@ -202,6 +203,24 @@ async function processQueue(panelId: number) {
   }
 }
 
+// ── Skill Expansion ──
+
+function expandSkill(prompt: string): string {
+  const homeDir = process.env.USERPROFILE || process.env.HOME || "";
+  const globalSkillsDir = join(homeDir, ".claude", "skills");
+
+  // Match /skillname at start of string or after whitespace, capturing the prefix
+  return prompt.replace(/(^|\s)\/([a-zA-Z0-9][a-zA-Z0-9_-]*)/g, (match, prefix, skillName) => {
+    const skillPath = join(globalSkillsDir, skillName, "SKILL.md");
+    if (!existsSync(skillPath)) return match;
+
+    let content = readFileSync(skillPath, "utf-8");
+    // Strip YAML frontmatter
+    content = content.replace(/^---[\s\S]*?---\s*\n/, "").trim();
+    return prefix + content;
+  });
+}
+
 function closeSession(panelId: number) {
   const session = sessions.get(panelId);
   if (!session) return;
@@ -225,8 +244,24 @@ const MIME: Record<string, string> = {
 
 // ── HTTP + WebSocket Server ──
 
+function findPort(preferred: number): number {
+  for (let p = preferred; p < preferred + 10; p++) {
+    try {
+      const test = Bun.listen({ hostname: "0.0.0.0", port: p, socket: {
+        data() {}, open() {}, close() {}, error() {},
+      }});
+      test.stop(true);
+      return p;
+    } catch {}
+  }
+  return preferred;
+}
+
+const ACTUAL_PORT = findPort(PORT);
+
 const server = Bun.serve<WsData>({
-  port: PORT,
+  port: ACTUAL_PORT,
+  reusePort: true,
 
   async fetch(req, server) {
     const url = new URL(req.url);
@@ -278,6 +313,75 @@ const server = Bun.serve<WsData>({
       } catch (err: any) {
         return Response.json({ error: err.message }, { status: 500 });
       }
+    }
+
+    // Upload API — save pasted images to disk so Claude can read them
+    if (url.pathname === "/api/upload" && req.method === "POST") {
+      try {
+        const body = await req.json() as { cwd: string; filename: string; data: string };
+        const { cwd, filename, data } = body;
+        const uploadDir = join(cwd.replace(/\\/g, "/"), ".claude-uploads");
+        mkdirSync(uploadDir, { recursive: true });
+        const filePath = join(uploadDir, filename).replace(/\\/g, "/");
+        await Bun.write(filePath, Buffer.from(data, "base64"));
+        return Response.json({ path: filePath });
+      } catch (err: any) {
+        return Response.json({ error: err.message }, { status: 500 });
+      }
+    }
+
+    // Skills API — global ~/.claude/skills/ + project-level commands/agents
+    if (url.pathname === "/api/skills") {
+      const cwd = url.searchParams.get("cwd") || "";
+      const homeDir = process.env.USERPROFILE || process.env.HOME || "";
+      const globalSkillsDir = join(homeDir, ".claude", "skills");
+
+      function parseDesc(mdPath: string): string {
+        try {
+          const content = readFileSync(mdPath, "utf-8");
+          for (const line of content.split("\n")) {
+            const t = line.trim();
+            if (t && !t.startsWith("#") && !t.startsWith("---")) return t.slice(0, 80);
+          }
+        } catch {}
+        return "";
+      }
+
+      const global: object[] = [];
+      if (existsSync(globalSkillsDir)) {
+        for (const e of readdirSync(globalSkillsDir, { withFileTypes: true })) {
+          if (e.isDirectory()) {
+            const desc = parseDesc(join(globalSkillsDir, e.name, "SKILL.md"));
+            global.push({ cmd: `/${e.name}`, desc, cat: "my-skills" });
+          }
+        }
+      }
+
+      const project: object[] = [];
+      const agents: object[] = [];
+      if (cwd) {
+        const norm = cwd.replace(/\\/g, "/");
+        const commandsDir = join(norm, ".claude", "commands");
+        const agentsDir = join(norm, ".claude", "agents");
+        if (existsSync(commandsDir)) {
+          for (const e of readdirSync(commandsDir, { withFileTypes: true })) {
+            if (e.isFile() && e.name.endsWith(".md")) {
+              const name = e.name.replace(/\.md$/, "");
+              project.push({ cmd: `/${name}`, desc: parseDesc(join(commandsDir, e.name)), cat: "project-cmds" });
+            }
+          }
+        }
+        if (existsSync(agentsDir)) {
+          for (const e of readdirSync(agentsDir, { withFileTypes: true })) {
+            if (e.isFile() && e.name.endsWith(".md")) {
+              const name = e.name.replace(/\.md$/, "");
+              agents.push({ cmd: `/${name}`, desc: parseDesc(join(agentsDir, e.name)), cat: "project-agents" });
+            }
+          }
+        }
+      }
+
+      return Response.json({ global, project, agents });
     }
 
     // Static file serving from dist/
@@ -335,8 +439,12 @@ const server = Bun.serve<WsData>({
               session = createSession(panelId, normalizedCwd, resume);
             }
 
-            // Queue message and process
-            session.messageQueue.push(prompt);
+            // Queue message and process (expand skill/slash commands server-side)
+            if (session.messageQueue.length >= MAX_QUEUE_SIZE) {
+              sendTo(ws, { type: "error", panelId, message: "Message queue full — wait for current tasks to complete." });
+              return;
+            }
+            session.messageQueue.push(expandSkill(prompt));
             processQueue(panelId);
             break;
           }
@@ -355,13 +463,17 @@ const server = Bun.serve<WsData>({
           case "terminal_input": {
             const { panelId, data } = msg;
             const term = terminalSessions.get(panelId);
-            if (term) term.pty.write(data);
+            if (term) {
+              try { term.pty.write(data); } catch { terminalSessions.delete(panelId); }
+            }
             break;
           }
           case "terminal_resize": {
             const { panelId, cols, rows } = msg;
             const term = terminalSessions.get(panelId);
-            if (term) term.pty.resize(cols, rows);
+            if (term) {
+              try { term.pty.resize(cols, rows); } catch { terminalSessions.delete(panelId); }
+            }
             break;
           }
           case "terminal_kill": {
@@ -381,4 +493,21 @@ const server = Bun.serve<WsData>({
   },
 });
 
-console.log(`claude-multi running at http://localhost:${PORT}`);
+// ── Graceful shutdown & crash protection ──
+
+function cleanup() {
+  for (const [id] of terminalSessions) closeTerminalSession(id);
+  for (const [id] of sessions) closeSession(id);
+  try { server.stop(true); } catch {}
+}
+
+process.on("SIGINT", () => { cleanup(); process.exit(0); });
+process.on("SIGTERM", () => { cleanup(); process.exit(0); });
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception (kept alive):", err.message);
+});
+process.on("unhandledRejection", (err: any) => {
+  console.error("Unhandled rejection (kept alive):", err?.message || err);
+});
+
+console.log(`claude-multi running at http://localhost:${ACTUAL_PORT}`);

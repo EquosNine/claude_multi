@@ -6,7 +6,7 @@
   import { panelStore } from './lib/stores/panels.svelte';
   import { settingsStore } from './lib/stores/settings.svelte';
   import { conversationStore } from './lib/stores/conversations.svelte';
-  import type { WsIncoming, ClaudeStreamEvent } from './lib/types';
+  import type { WsIncoming, ClaudeStreamEvent, CostData } from './lib/types';
 
   // Initialize
   panelStore.restorePanels();
@@ -42,7 +42,7 @@
           type: 'done',
           text: msg.exitCode === 0 ? '--- completed ---' : `--- exited (code ${msg.exitCode}) ---`,
         });
-        const donePanel = panelStore.panels.find(p => p.id === msg.panelId);
+        const donePanel = panelStore.getPanel(msg.panelId);
         if (donePanel?.sessionId) {
           const lastAssistant = [...donePanel.messages].reverse().find(m => m.type === 'assistant');
           conversationStore.finish(
@@ -88,22 +88,22 @@
     if (!data?.type) return;
 
     switch (data.type) {
-      case 'system':
-        if (data.subtype === 'init') {
-          const sid = data.session_id || '';
+      case 'system': {
+        // SDK sends subtype:'status' (not 'init' like CLI stream-json)
+        const sid = data.session_id || '';
+        if (sid && !panelStore.getPanel(panelId)?.sessionId) {
           panelStore.addMessage(panelId, {
             id: panelStore.nextMsgId(),
             type: 'system',
-            text: `Session: ${sid || 'started'}`,
+            text: `Session: ${sid}`,
           });
-          if (sid) {
-            panelStore.setSessionId(panelId, sid);
-            const panel = panelStore.panels.find(p => p.id === panelId);
-            panelStore.saveSession(panelId, sid, panel?.cwd || '', panel?.name || `Panel ${panelId + 1}`);
-            conversationStore.start(panelId, sid);
-          }
+          panelStore.setSessionId(panelId, sid);
+          const panel = panelStore.getPanel(panelId);
+          panelStore.saveSession(panelId, sid, panel?.cwd || '', panel?.name || `Panel ${panelId + 1}`);
+          conversationStore.start(panelId, sid);
         }
         break;
+      }
       case 'assistant': {
         const content = data.message?.content;
         if (!content || !Array.isArray(content)) break;
@@ -156,14 +156,16 @@
         }
         // Parse cost/token/cache/duration data
         {
-          const cost = data.total_cost_usd ?? data.cost_usd ?? 0;
-          const inputTok = data.usage?.input_tokens ?? 0;
-          const outputTok = data.usage?.output_tokens ?? 0;
-          const cacheRead = data.usage?.cache_read_input_tokens ?? 0;
-          const cacheCreate = data.usage?.cache_creation_input_tokens ?? 0;
-          const durMs = data.duration_ms ?? null;
-          if (cost > 0 || inputTok > 0 || cacheRead > 0 || durMs !== null) {
-            panelStore.updateCost(panelId, cost, inputTok, outputTok, cacheRead, cacheCreate, durMs);
+          const cost: CostData = {
+            costUsd: data.total_cost_usd ?? data.cost_usd ?? 0,
+            inputTokens: data.usage?.input_tokens ?? 0,
+            outputTokens: data.usage?.output_tokens ?? 0,
+            cacheReadTokens: data.usage?.cache_read_input_tokens ?? 0,
+            cacheCreationTokens: data.usage?.cache_creation_input_tokens ?? 0,
+            durationMs: data.duration_ms ?? null,
+          };
+          if (cost.costUsd > 0 || cost.inputTokens > 0 || cost.cacheReadTokens > 0 || cost.durationMs !== null) {
+            panelStore.updateCost(panelId, cost);
           }
         }
         break;

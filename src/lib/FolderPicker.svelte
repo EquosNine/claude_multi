@@ -1,14 +1,11 @@
 <script lang="ts">
+  import { browse, type DirEntry } from './api';
+
   let { currentPath, onSelect, onClose }: {
     currentPath: string;
     onSelect: (path: string) => void;
     onClose: () => void;
   } = $props();
-
-  interface DirEntry {
-    name: string;
-    path: string;
-  }
 
   let entries = $state<DirEntry[]>([]);
   let browsePath = $state('');
@@ -41,19 +38,13 @@
     return crumbs;
   });
 
-  async function browse(path: string) {
+  async function loadDir(path: string) {
     loading = true;
     error = '';
     try {
-      const res = await fetch(`/api/browse?path=${encodeURIComponent(path)}`);
-      const data = await res.json();
-      if (data.error) {
-        error = data.error;
-        entries = [];
-      } else {
-        entries = data.entries || [];
-        browsePath = data.path || path;
-      }
+      const data = await browse(path);
+      entries = data.entries;
+      browsePath = data.path;
     } catch (e: any) {
       error = e.message || 'Failed to browse';
       entries = [];
@@ -66,7 +57,7 @@
   }
 
   $effect(() => {
-    browse(currentPath || '');
+    loadDir(currentPath || '');
   });
 </script>
 
@@ -78,7 +69,7 @@
     <div class="fp-breadcrumbs">
       {#each breadcrumbs as crumb, i}
         {#if i > 0}<span class="fp-sep">/</span>{/if}
-        <button class="fp-crumb" onclick={() => browse(crumb.path)}>
+        <button class="fp-crumb" onclick={() => loadDir(crumb.path)}>
           {crumb.label}
         </button>
       {/each}
@@ -98,7 +89,7 @@
   {:else}
     <div class="fp-list">
       {#each entries as entry}
-        <button class="fp-item" ondblclick={() => { onSelect(entry.path); }} onclick={() => browse(entry.path)}>
+        <button class="fp-item" ondblclick={() => { onSelect(entry.path); }} onclick={() => loadDir(entry.path)}>
           <span class="fp-folder-icon">📁</span>
           <span class="fp-name">{entry.name}</span>
         </button>

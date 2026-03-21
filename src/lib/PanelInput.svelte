@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { PanelState } from './types';
+  import type { SlashCommand } from './types';
   import SlashDropdown from './SlashDropdown.svelte';
+  import { fetchSkills, uploadImage } from './api';
 
   let { status, onSend, onStop, panelId, cwd, onResume }: {
     status: PanelState['status'];
@@ -13,9 +15,16 @@
 
   let inputValue = $state('');
   let textareaEl: HTMLTextAreaElement;
+  let dynamicCmds = $state<SlashCommand[]>([]);
+
+  $effect(() => {
+    fetchSkills(cwd)
+      .then(data => { dynamicCmds = [...data.global, ...data.project, ...data.agents]; })
+      .catch(() => {});
+  });
   let showSlash = $state(false);
   let slashFilter = $state('');
-  let attachedFiles = $state<Array<{ name: string; content: string }>>([]);
+  let attachedFiles = $state<Array<{ name: string; content: string; path?: string; isImage?: boolean; preview?: string }>>([]);
   let isDragOver = $state(false);
 
   function handleInput() {
@@ -23,13 +32,29 @@
     textareaEl.style.height = Math.min(textareaEl.scrollHeight, 300) + 'px';
 
     const val = inputValue;
-    if (val.startsWith('/') && !val.includes('\n')) {
-      slashFilter = val;
+    const slashMatch = /(?:^|\s)(\/\S*)$/.exec(val);
+    if (slashMatch) {
+      slashFilter = slashMatch[1];
       showSlash = true;
     } else {
       showSlash = false;
       slashFilter = '';
     }
+  }
+
+  function handleSlashInsert(cmdText: string) {
+    const startPos = inputValue.length - slashFilter.length;
+    inputValue = inputValue.slice(0, startPos) + cmdText + ' ';
+    showSlash = false;
+    slashFilter = '';
+    requestAnimationFrame(() => {
+      if (textareaEl) {
+        textareaEl.style.height = 'auto';
+        textareaEl.style.height = Math.min(textareaEl.scrollHeight, 300) + 'px';
+        textareaEl.focus();
+        textareaEl.setSelectionRange(inputValue.length, inputValue.length);
+      }
+    });
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -50,7 +75,9 @@
     let fullPrompt = inputValue.trim();
     if (hasFiles) {
       const fileContents = attachedFiles
-        .map(f => `<file name="${f.name}">\n${f.content}\n</file>`)
+        .map(f => f.isImage
+          ? `[Image saved to: ${f.path} — use the Read tool to view it]`
+          : `<file name="${f.name}">\n${f.content}\n</file>`)
         .join('\n\n');
       fullPrompt = fullPrompt ? `${fullPrompt}\n\n${fileContents}` : fileContents;
     }
@@ -108,6 +135,30 @@
     attachedFiles = attachedFiles.filter(f => f.name !== name);
   }
 
+  async function handlePaste(e: ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const blob = item.getAsFile();
+        if (!blob) continue;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          const base64 = dataUrl.split(',')[1];
+          const filename = `screenshot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.png`;
+          uploadImage(cwd, filename, base64)
+            .then(data => {
+              attachedFiles = [...attachedFiles, { name: filename, content: '', path: data.path, isImage: true, preview: dataUrl }];
+            })
+            .catch(() => {});
+        };
+        reader.readAsDataURL(blob);
+      }
+    }
+  }
+
 </script>
 
 <div
@@ -121,10 +172,12 @@
     <SlashDropdown
       filter={slashFilter}
       onSelect={handleSlashSelect}
+      onInsert={handleSlashInsert}
       onClose={handleSlashClose}
       {panelId}
       {cwd}
       {onResume}
+      extraCmds={dynamicCmds}
     />
   {/if}
 
@@ -135,10 +188,17 @@
   {#if attachedFiles.length > 0}
     <div class="attached-files">
       {#each attachedFiles as file}
-        <span class="file-chip">
-          <span class="file-name">{file.name}</span>
-          <button class="file-remove" onclick={() => removeFile(file.name)} title="Remove">&times;</button>
-        </span>
+        {#if file.isImage && file.preview}
+          <span class="image-preview-chip">
+            <img src={file.preview} alt={file.name} class="preview-thumb" />
+            <button class="preview-remove" onclick={() => removeFile(file.name)} title="Remove">&times;</button>
+          </span>
+        {:else}
+          <span class="file-chip">
+            <span class="file-name">{file.name}</span>
+            <button class="file-remove" onclick={() => removeFile(file.name)} title="Remove">&times;</button>
+          </span>
+        {/if}
       {/each}
     </div>
   {/if}
@@ -153,6 +213,7 @@
       oninput={handleInput}
       onkeydown={handleKeydown}
       onblur={() => setTimeout(() => handleSlashClose(), 150)}
+      onpaste={handlePaste}
     ></textarea>
     <div class="input-actions">
       <span class="hint">ctrl+enter</span>
@@ -242,6 +303,43 @@
   }
 
   .file-remove:hover { color: var(--red); }
+
+  .image-preview-chip {
+    position: relative;
+    display: inline-flex;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid rgba(93, 163, 250, 0.4);
+  }
+
+  .preview-thumb {
+    display: block;
+    height: 64px;
+    width: auto;
+    max-width: 120px;
+    object-fit: cover;
+  }
+
+  .preview-remove {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: rgba(0, 0, 0, 0.6);
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    padding: 0;
+  }
+
+  .preview-remove:hover { background: rgba(255, 80, 80, 0.8); }
 
   .input-row {
     display: flex;

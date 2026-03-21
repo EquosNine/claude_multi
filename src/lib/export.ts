@@ -1,70 +1,38 @@
 import type { OutputMessage } from './types';
 
-export function formatMessagesAsText(messages: OutputMessage[]): string {
-  const lines: string[] = [];
-  for (const msg of messages) {
+function formatMessage(msg: OutputMessage, format: 'text' | 'markdown'): string[] {
+  if (format === 'text') {
     switch (msg.type) {
-      case 'system':
-        lines.push(msg.text);
-        break;
-      case 'assistant':
-        lines.push(msg.text);
-        lines.push('');
-        break;
-      case 'error':
-        lines.push(`[ERROR] ${msg.text}`);
-        break;
-      case 'tool':
-        lines.push(`[${msg.toolName || 'TOOL'}] ${msg.text}`);
-        break;
-      case 'tool-result':
-        lines.push(`  → ${msg.text}`);
-        break;
-      case 'done':
-        lines.push(msg.text);
-        lines.push('');
-        break;
+      case 'system':     return [msg.text];
+      case 'assistant':  return [msg.text, ''];
+      case 'error':      return [`[ERROR] ${msg.text}`];
+      case 'tool':       return [`[${msg.toolName || 'TOOL'}] ${msg.text}`];
+      case 'tool-result':return [`  → ${msg.text}`];
+      case 'done':       return [msg.text, ''];
+      default:           return [];
+    }
+  } else {
+    switch (msg.type) {
+      case 'system':     return [`> ${msg.text}`];
+      case 'assistant':  return [msg.text, ''];
+      case 'error':      return [`**ERROR:** ${msg.text}`, ''];
+      case 'tool':       return [`\`${msg.toolName || 'tool'}\` ${msg.text}`];
+      case 'tool-result':return ['```', msg.text, '```'];
+      case 'done':       return ['---', `_${msg.text}_`, ''];
+      default:           return [];
     }
   }
-  return lines.join('\n').trim();
+}
+
+export function formatMessagesAsText(messages: OutputMessage[]): string {
+  return messages.flatMap(m => formatMessage(m, 'text')).join('\n').trim();
 }
 
 export function formatMessagesAsMarkdown(messages: OutputMessage[], panelName?: string): string {
-  const lines: string[] = [];
-  if (panelName) {
-    lines.push(`# ${panelName}`);
-    lines.push(`_Exported: ${new Date().toLocaleString()}_`);
-    lines.push('');
-  }
-  for (const msg of messages) {
-    switch (msg.type) {
-      case 'system':
-        lines.push(`> ${msg.text}`);
-        break;
-      case 'assistant':
-        lines.push(msg.text);
-        lines.push('');
-        break;
-      case 'error':
-        lines.push(`**ERROR:** ${msg.text}`);
-        lines.push('');
-        break;
-      case 'tool':
-        lines.push(`\`${msg.toolName || 'tool'}\` ${msg.text}`);
-        break;
-      case 'tool-result':
-        lines.push('```');
-        lines.push(msg.text);
-        lines.push('```');
-        break;
-      case 'done':
-        lines.push('---');
-        lines.push(`_${msg.text}_`);
-        lines.push('');
-        break;
-    }
-  }
-  return lines.join('\n').trim();
+  const header = panelName
+    ? [`# ${panelName}`, `_Exported: ${new Date().toLocaleString()}_`, '']
+    : [];
+  return [...header, ...messages.flatMap(m => formatMessage(m, 'markdown'))].join('\n').trim();
 }
 
 export async function copyPanelOutput(messages: OutputMessage[]): Promise<boolean> {
