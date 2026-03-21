@@ -2,6 +2,7 @@ import { type ServerWebSocket } from "bun";
 import { join } from "path";
 import { existsSync, statSync, readdirSync } from "fs";
 import { unstable_v2_createSession, unstable_v2_resumeSession, type SDKSession } from "@anthropic-ai/claude-agent-sdk";
+import { spawn as spawnPty, type IPty } from "node-pty";
 
 const PORT = 3456;
 const MAX_PANELS = 6;
@@ -22,6 +23,57 @@ interface WsData {
 
 const sessions = new Map<number, PanelSession>();
 const sockets = new Set<ServerWebSocket<WsData>>();
+
+// ── Terminal Sessions ──
+
+interface TerminalSession {
+  pty: IPty;
+}
+
+const terminalSessions = new Map<number, TerminalSession>();
+
+function createTerminalSession(panelId: number, cwd: string, cols: number, rows: number) {
+  // Kill existing terminal for this panel if any
+  const existing = terminalSessions.get(panelId);
+  if (existing) {
+    try { existing.pty.kill(); } catch {}
+    terminalSessions.delete(panelId);
+  }
+
+  const shell = process.platform === "win32"
+    ? "powershell.exe"
+    : (process.env.SHELL || "bash");
+
+  const resolvedCwd = cwd && existsSync(cwd.replace(/\\/g, "/"))
+    ? cwd.replace(/\\/g, "/")
+    : (process.env.USERPROFILE || process.env.HOME || "/");
+
+  const ptyProcess = spawnPty(shell, [], {
+    name: "xterm-256color",
+    cols: cols || 80,
+    rows: rows || 24,
+    cwd: resolvedCwd,
+    env: process.env as Record<string, string>,
+  });
+
+  ptyProcess.onData((data) => {
+    broadcast({ type: "terminal_output", panelId, data });
+  });
+
+  ptyProcess.onExit(({ exitCode }) => {
+    broadcast({ type: "terminal_exit", panelId, code: exitCode });
+    terminalSessions.delete(panelId);
+  });
+
+  terminalSessions.set(panelId, { pty: ptyProcess });
+}
+
+function closeTerminalSession(panelId: number) {
+  const term = terminalSessions.get(panelId);
+  if (!term) return;
+  try { term.pty.kill(); } catch {}
+  terminalSessions.delete(panelId);
+}
 
 function sendTo(ws: ServerWebSocket<WsData>, msg: object) {
   try { ws.send(JSON.stringify(msg)); } catch {}
@@ -293,6 +345,28 @@ const server = Bun.serve<WsData>({
             closeSession(panelId);
             broadcast({ type: "done", panelId, exitCode: 0 });
             broadcast({ type: "status", panelId, status: "idle" });
+            break;
+          }
+          case "terminal_create": {
+            const { panelId, cwd, cols, rows } = msg;
+            createTerminalSession(panelId, cwd, cols, rows);
+            break;
+          }
+          case "terminal_input": {
+            const { panelId, data } = msg;
+            const term = terminalSessions.get(panelId);
+            if (term) term.pty.write(data);
+            break;
+          }
+          case "terminal_resize": {
+            const { panelId, cols, rows } = msg;
+            const term = terminalSessions.get(panelId);
+            if (term) term.pty.resize(cols, rows);
+            break;
+          }
+          case "terminal_kill": {
+            const { panelId } = msg;
+            closeTerminalSession(panelId);
             break;
           }
         }

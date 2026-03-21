@@ -103,8 +103,11 @@
       <div class="conn-dot" class:connected></div>
     </div>
     <span class="panel-count">{visibleCount}/{totalCount}</span>
-    <button class="hdr-btn" disabled={!canAdd} onclick={() => panelStore.createPanel()}>
+    <button class="hdr-btn" disabled={!canAdd} onclick={() => panelStore.createPanel('claude')}>
       + Panel
+    </button>
+    <button class="hdr-btn terminal-btn" disabled={!canAdd} onclick={() => panelStore.createPanel('terminal')}>
+      + Term
     </button>
     <button class="hdr-btn" onclick={() => panelStore.toggleLayout()}>
       {layoutLabel}
@@ -251,4 +254,5 @@
   .hdr-btn:hover { border-color: var(--accent); color: var(--accent); }
   .hdr-btn:disabled { opacity: 0.3; cursor: not-allowed; }
   .hdr-btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .hdr-btn.terminal-btn:hover { border-color: var(--green); color: var(--green); }
 </style>

@@ -1,5 +1,6 @@
 export interface PanelState {
   id: number;
+  panelType: 'claude' | 'terminal';
   name: string;
   cwd: string;
   group: string;     // tab group this panel belongs to
@@ -65,12 +66,18 @@ export type WsIncoming =
   | { type: 'status'; panelId: number; status: 'running' | 'idle' | 'error' }
   | { type: 'error'; panelId: number; message: string }
   | { type: 'done'; panelId: number; exitCode: number }
-  | { type: 'agent_detail'; panelId: number; agent: { toolUseId: string; description: string; status: string; output?: string } };
+  | { type: 'agent_detail'; panelId: number; agent: { toolUseId: string; description: string; status: string; output?: string } }
+  | { type: 'terminal_output'; panelId: number; data: string }
+  | { type: 'terminal_exit'; panelId: number; code: number };
 
 // WebSocket message types (client -> server)
 export type WsOutgoing =
   | { type: 'prompt'; panelId: number; cwd: string; prompt: string; resume?: string }
-  | { type: 'cancel'; panelId: number };
+  | { type: 'cancel'; panelId: number }
+  | { type: 'terminal_create'; panelId: number; cwd: string; cols: number; rows: number }
+  | { type: 'terminal_input'; panelId: number; data: string }
+  | { type: 'terminal_resize'; panelId: number; cols: number; rows: number }
+  | { type: 'terminal_kill'; panelId: number };
 
 // Claude stream-json event (subset we care about)
 export interface ClaudeStreamEvent {

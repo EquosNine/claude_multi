@@ -9,6 +9,7 @@
   import PanelInput from './PanelInput.svelte';
   import FolderPicker from './FolderPicker.svelte';
   import AgentMonitor from './AgentMonitor.svelte';
+  import TerminalPanel from './TerminalPanel.svelte';
 
   let { panel }: { panel: PanelState } = $props();
 
@@ -186,25 +187,27 @@
       />
     </div>
     <div class="titlebar-right">
-      {#if agentsText}
-        <button class="badge agents" onclick={() => showAgentMonitor = !showAgentMonitor}>
-          {agentsText}
+      {#if panel.panelType !== 'terminal'}
+        {#if agentsText}
+          <button class="badge agents" onclick={() => showAgentMonitor = !showAgentMonitor}>
+            {agentsText}
+          </button>
+        {/if}
+        {#if costText}
+          <span class="badge cost">{costText}</span>
+        {/if}
+        {#if tokensText}
+          <span class="badge tokens">{tokensText}</span>
+        {/if}
+        {#if cacheText}
+          <span class="badge cache" title="Cache-read tokens (billed at ~10%)">{cacheText}</span>
+        {/if}
+        <span class="timer" class:active={panel.status === 'running'}>{timerText}</span>
+        <button class="action-btn" title="Copy output" onclick={handleCopy}>
+          {copyFeedback || 'CP'}
         </button>
+        <button class="action-btn" title="Download .md" onclick={handleExport}>DL</button>
       {/if}
-      {#if costText}
-        <span class="badge cost">{costText}</span>
-      {/if}
-      {#if tokensText}
-        <span class="badge tokens">{tokensText}</span>
-      {/if}
-      {#if cacheText}
-        <span class="badge cache" title="Cache-read tokens (billed at ~10%)">{cacheText}</span>
-      {/if}
-      <span class="timer" class:active={panel.status === 'running'}>{timerText}</span>
-      <button class="action-btn" title="Copy output" onclick={handleCopy}>
-        {copyFeedback || 'CP'}
-      </button>
-      <button class="action-btn" title="Download .md" onclick={handleExport}>DL</button>
       <button class="close-btn" title="Remove panel" onclick={handleClose}>&times;</button>
     </div>
   </div>
@@ -232,29 +235,32 @@
   </div>
 
   <!-- Content -->
-  <PanelOutput messages={panel.messages} status={panel.status} />
-  <AgentMonitor agents={panel.agentDetails} visible={showAgentMonitor || panel.agents > 0} />
+  {#if panel.panelType === 'terminal'}
+    <TerminalPanel panelId={panel.id} cwd={panel.cwd} />
+  {:else}
+    <PanelOutput messages={panel.messages} status={panel.status} />
+    <AgentMonitor agents={panel.agentDetails} visible={showAgentMonitor || panel.agentDetails.length > 0} />
 
-  {#if showSessionPicker}
-    <div class="session-picker">
-      <div class="sp-header">
-        <span class="sp-title">Resume Session</span>
-        <button class="sp-close" onclick={() => showSessionPicker = false}>&times;</button>
+    {#if showSessionPicker}
+      <div class="session-picker">
+        <div class="sp-header">
+          <span class="sp-title">Resume Session</span>
+          <button class="sp-close" onclick={() => showSessionPicker = false}>&times;</button>
+        </div>
+        <div class="sp-list">
+          {#each sessions as session}
+            <button class="sp-item" onclick={() => resumeSession(session)}>
+              <span class="sp-id">{session.id.slice(0, 12)}...</span>
+              <span class="sp-label">{session.label}</span>
+              <span class="sp-time">{new Date(session.timestamp).toLocaleString()}</span>
+            </button>
+          {/each}
+        </div>
       </div>
-      <div class="sp-list">
-        {#each sessions as session}
-          <button class="sp-item" onclick={() => resumeSession(session)}>
-            <span class="sp-id">{session.id.slice(0, 12)}...</span>
-            <span class="sp-label">{session.label}</span>
-            <span class="sp-time">{new Date(session.timestamp).toLocaleString()}</span>
-          </button>
-        {/each}
-      </div>
-    </div>
+    {/if}
+
+    <PanelInput status={panel.status} onSend={handleSend} onStop={handleStop} panelId={panel.id} cwd={panel.cwd} onResume={openSessionPicker} />
   {/if}
-
-  <!-- Input -->
-  <PanelInput status={panel.status} onSend={handleSend} onStop={handleStop} panelId={panel.id} cwd={panel.cwd} onResume={openSessionPicker} />
 </div>
 
 <style>

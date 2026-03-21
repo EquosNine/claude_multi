@@ -85,11 +85,12 @@ function nextMsgId(): string {
   return `msg-${++msgCounter}`;
 }
 
-function createPanel(): PanelState | null {
+function createPanel(panelType: 'claude' | 'terminal' = 'claude'): PanelState | null {
   if (panels.length >= MAX_PANELS) return null;
   const id = nextPanelId++;
   const panel: PanelState = {
     id,
+    panelType,
     name: localStorage.getItem(`panel-name-${id}`) || '',
     cwd: localStorage.getItem(`panel-cwd-${id}`) || '',
     group: activeGroup,
@@ -107,6 +108,7 @@ function createPanel(): PanelState | null {
   };
   panels.push(panel);
   savePanelCount();
+  savePanelTypes();
   return panel;
 }
 
@@ -114,11 +116,14 @@ function removePanel(id: number) {
   const idx = panels.findIndex(p => p.id === id);
   if (idx === -1) return;
   const panel = panels[idx];
-  if (panel.status === 'running') {
+  if (panel.panelType === 'terminal') {
+    ws.send({ type: 'terminal_kill', panelId: id });
+  } else if (panel.status === 'running') {
     ws.send({ type: 'cancel', panelId: id });
   }
   panels.splice(idx, 1);
   savePanelCount();
+  savePanelTypes();
 }
 
 function addMessage(panelId: number, msg: OutputMessage) {
@@ -251,11 +256,18 @@ function savePanelCount() {
   localStorage.setItem('panel-count', String(panels.length));
 }
 
+function savePanelTypes() {
+  localStorage.setItem('panel-types', JSON.stringify(panels.map(p => p.panelType)));
+}
+
 function restorePanels() {
   nextPanelId = 0;
   const count = parseInt(localStorage.getItem('panel-count') || '1', 10);
+  const types: string[] = JSON.parse(localStorage.getItem('panel-types') || '[]');
   const n = Math.max(1, Math.min(count, MAX_PANELS));
-  for (let i = 0; i < n; i++) createPanel();
+  for (let i = 0; i < n; i++) {
+    createPanel(types[i] === 'terminal' ? 'terminal' : 'claude');
+  }
 }
 
 export const panelStore = {
