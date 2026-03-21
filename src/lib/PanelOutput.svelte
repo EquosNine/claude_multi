@@ -147,7 +147,7 @@
     overflow-y: auto;
     padding: 8px 10px;
     font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-    font-size: calc(14px * var(--font-scale));
+    font-size: 1.4rem;
     line-height: 1.5;
     min-height: 0;
   }
@@ -175,7 +175,7 @@
     cursor: pointer;
     text-align: left;
     font-family: inherit;
-    font-size: 10px;
+    font-size: 1rem;
     color: var(--text-dim);
     transition: background 0.12s;
   }
@@ -186,7 +186,7 @@
   }
 
   .group-toggle {
-    font-size: 8px;
+    font-size: 0.8rem;
     flex-shrink: 0;
     width: 10px;
     color: var(--accent);
@@ -210,7 +210,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 10px;
+    font-size: 1rem;
     letter-spacing: 0.2px;
   }
 
@@ -225,7 +225,7 @@
     align-items: baseline;
     gap: 6px;
     padding: 2px 10px;
-    font-size: 11px;
+    font-size: 1.1rem;
     color: var(--text-dim);
   }
 
@@ -233,7 +233,7 @@
     color: var(--blue);
     font-weight: 600;
     flex-shrink: 0;
-    font-size: 10px;
+    font-size: 1rem;
     text-transform: uppercase;
     letter-spacing: 0.3px;
   }
@@ -253,15 +253,15 @@
     color: var(--text-dim);
     cursor: pointer;
     padding: 1px 10px;
-    font-size: 10px;
+    font-size: 1rem;
     font-family: inherit;
     text-align: left;
     width: 100%;
   }
 
   .msg-tool-result-compact:hover { color: var(--text); }
-  .tr-toggle { font-size: 8px; flex-shrink: 0; width: 10px; }
-  .tr-label { color: var(--green); font-size: 9px; flex-shrink: 0; }
+  .tr-toggle { font-size: 0.8rem; flex-shrink: 0; width: 10px; }
+  .tr-label { color: var(--green); font-size: 0.9rem; flex-shrink: 0; }
   .tr-preview {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -271,7 +271,7 @@
 
   .msg-tool-result {
     white-space: pre-wrap;
-    font-size: 10px;
+    font-size: 1rem;
     color: var(--text-dim);
     padding: 4px 10px;
     border-top: 1px solid var(--outline-dim);
@@ -287,20 +287,20 @@
 
   .msg-system {
     color: var(--text-dim);
-    font-size: 11px;
+    font-size: 1.1rem;
     padding: 2px 0;
     opacity: 0.7;
   }
 
   .msg-error {
     color: var(--red);
-    font-size: 11px;
+    font-size: 1.1rem;
     padding: 2px 0;
   }
 
   .msg-done {
     color: var(--green);
-    font-size: 10px;
+    font-size: 1rem;
     padding: 2px 0;
     opacity: 0.6;
   }
@@ -315,7 +315,7 @@
     border: none;
     border-radius: 16px;
     padding: 4px 14px;
-    font-size: 11px;
+    font-size: 1.1rem;
     font-weight: 600;
     cursor: pointer;
     z-index: 10;

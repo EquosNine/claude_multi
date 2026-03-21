@@ -33,6 +33,8 @@
   --radius-lg: 4px;
 }
 
+/* Scale root font-size so all rem values inherit the scale */
+html { font-size: calc(10px * var(--font-scale)); }
 html, body, #app { height: 100%; overflow: hidden; }
 #app { display: flex; flex-direction: column; }
 
@@ -50,15 +52,15 @@ body {
 }
 
 .msg { margin-bottom: 4px; white-space: pre-wrap; word-break: break-word; }
-.msg-system { color: var(--text-dim); font-style: italic; font-size: calc(12px * var(--font-scale)); }
+.msg-system { color: var(--text-dim); font-style: italic; font-size: 1.2rem; }
 .msg-assistant { color: var(--text); white-space: normal; }
-.msg-error { color: var(--red); font-size: calc(12px * var(--font-scale)); }
+.msg-error { color: var(--red); font-size: 1.2rem; }
 .msg-tool-result {
   background: var(--surface-mid);
   border-left: 2px solid var(--green);
   padding: 4px 8px;
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
-  font-size: calc(11px * var(--font-scale));
+  font-size: 1.1rem;
   color: var(--text-dim);
   margin: 2px 0;
   max-height: 300px;
@@ -68,7 +70,7 @@ body {
 }
 .msg-done {
   color: var(--green);
-  font-size: calc(12px * var(--font-scale));
+  font-size: 1.2rem;
   border-top: 1px solid var(--outline-dim);
   padding-top: 4px;
   margin-top: 4px;
@@ -87,7 +89,7 @@ body {
   color: var(--text);
   border-radius: var(--radius);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 1.2rem;
   font-family: 'Inter', sans-serif;
   transition: all 0.15s;
 }
@@ -101,7 +103,7 @@ body {
   justify-content: center;
   height: 100%;
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: 1.4rem;
   font-family: 'Space Grotesk', sans-serif;
   letter-spacing: 0.5px;
 }
@@ -158,7 +160,7 @@ body {
   margin: 6px 0;
   overflow: auto;
   max-height: 400px;
-  font-size: calc(13px * var(--font-scale));
+  font-size: 1.3rem;
   line-height: 1.5;
 }
 
@@ -182,7 +184,7 @@ body {
 .msg-assistant table {
   border-collapse: collapse;
   margin: 6px 0;
-  font-size: calc(13px * var(--font-scale));
+  font-size: 1.3rem;
   width: 100%;
 }
 .msg-assistant th,

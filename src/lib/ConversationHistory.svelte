@@ -321,7 +321,7 @@
   }
   .drawer-title {
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 13px;
+    font-size: 1.3rem;
     font-weight: 700;
     letter-spacing: 0.5px;
     text-transform: uppercase;
@@ -334,7 +334,7 @@
   }
   .count {
     font-family: 'Fira Code', monospace;
-    font-size: 10px;
+    font-size: 1rem;
     color: var(--text-dim);
   }
   .close-btn {
@@ -342,7 +342,7 @@
     border: none;
     color: var(--text-dim);
     cursor: pointer;
-    font-size: 18px;
+    font-size: 1.8rem;
     line-height: 1;
     padding: 0 2px;
     transition: color 0.12s;
@@ -380,7 +380,7 @@
     border-radius: var(--radius);
     color: var(--text);
     font-family: 'Fira Code', monospace;
-    font-size: 11px;
+    font-size: 1.1rem;
     padding: 4px 8px;
     outline: none;
   }
@@ -391,7 +391,7 @@
     border-radius: var(--radius);
     color: var(--text-dim);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 1.4rem;
     padding: 3px 7px;
     transition: all 0.12s;
     line-height: 1;
@@ -407,7 +407,7 @@
   .empty {
     padding: 20px;
     font-family: 'Fira Code', monospace;
-    font-size: 11px;
+    font-size: 1.1rem;
     color: var(--text-dim);
     text-align: center;
   }
@@ -435,7 +435,7 @@
   }
   .item-label {
     flex: 1;
-    font-size: 12px;
+    font-size: 1.2rem;
     color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -446,7 +446,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 1.2rem;
     color: var(--text-dim);
     padding: 0;
     line-height: 1;
@@ -464,7 +464,7 @@
   }
   .item-cwd {
     font-family: 'Fira Code', monospace;
-    font-size: 9px;
+    font-size: 0.9rem;
     color: var(--text-dim);
     max-width: 100px;
     overflow: hidden;
@@ -473,16 +473,16 @@
   }
   .item-time {
     font-family: 'Fira Code', monospace;
-    font-size: 9px;
+    font-size: 0.9rem;
     color: var(--text-dim);
   }
   .item-cost {
     font-family: 'Fira Code', monospace;
-    font-size: 9px;
+    font-size: 0.9rem;
     color: var(--green);
   }
   .item-badge {
-    font-size: 8px;
+    font-size: 0.8rem;
     padding: 1px 4px;
     border-radius: var(--radius);
     text-transform: uppercase;
@@ -509,7 +509,7 @@
     align-items: center;
     justify-content: center;
     font-family: 'Fira Code', monospace;
-    font-size: 11px;
+    font-size: 1.1rem;
     color: var(--text-dim);
   }
 
@@ -524,7 +524,7 @@
   }
   .preview-title {
     flex: 1;
-    font-size: 13px;
+    font-size: 1.3rem;
     color: var(--text);
     line-height: 1.4;
     word-break: break-word;
@@ -541,7 +541,7 @@
     color: var(--text-dim);
     border-radius: var(--radius);
     cursor: pointer;
-    font-size: 11px;
+    font-size: 1.1rem;
     font-family: 'Fira Code', monospace;
     transition: all 0.12s;
     white-space: nowrap;
@@ -566,7 +566,7 @@
   }
   .meta-key {
     font-family: 'Fira Code', monospace;
-    font-size: 9px;
+    font-size: 0.9rem;
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -574,7 +574,7 @@
     flex-shrink: 0;
   }
   .meta-val {
-    font-size: 11px;
+    font-size: 1.1rem;
     color: var(--text);
     word-break: break-all;
   }
@@ -585,7 +585,7 @@
   .preview-snippet-label {
     padding: 10px 16px 4px;
     font-family: 'Fira Code', monospace;
-    font-size: 9px;
+    font-size: 0.9rem;
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -598,7 +598,7 @@
     background: var(--surface-mid);
     border: 1px solid var(--outline-dim);
     border-radius: var(--radius-lg);
-    font-size: 12px;
+    font-size: 1.2rem;
     color: var(--text);
     line-height: 1.5;
     overflow-y: auto;
@@ -623,7 +623,7 @@
     border-radius: var(--radius);
     color: var(--text);
     font-family: 'Fira Code', monospace;
-    font-size: 11px;
+    font-size: 1.1rem;
     padding: 5px 8px;
     outline: none;
     cursor: pointer;
@@ -637,7 +637,7 @@
     color: var(--accent);
     cursor: pointer;
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 12px;
+    font-size: 1.2rem;
     font-weight: 600;
     letter-spacing: 0.3px;
     transition: all 0.15s;

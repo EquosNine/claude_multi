@@ -193,7 +193,7 @@
     background: rgba(204, 151, 255, 0.12);
     color: var(--accent);
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 11px;
+    font-size: 1.1rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -218,7 +218,7 @@
     border-radius: var(--radius);
     padding: 2px 6px;
     font-family: 'Fira Code', monospace;
-    font-size: 10px;
+    font-size: 1rem;
     color: var(--accent);
   }
 
@@ -234,7 +234,7 @@
     border: none;
     color: var(--text-dim);
     cursor: pointer;
-    font-size: 13px;
+    font-size: 1.3rem;
     line-height: 1;
     padding: 0;
     display: flex;
@@ -253,7 +253,7 @@
   .prompt-char {
     color: var(--accent);
     font-family: 'Fira Code', monospace;
-    font-size: 14px;
+    font-size: 1.4rem;
     font-weight: 700;
     padding: 0 6px 8px 0;
     flex-shrink: 0;
@@ -265,7 +265,7 @@
     border: none;
     color: var(--text);
     padding: 4px 0;
-    font-size: calc(14px * var(--font-scale));
+    font-size: 1.4rem;
     font-family: 'Fira Code', monospace;
     resize: none;
     outline: none;
@@ -275,7 +275,7 @@
   }
 
   textarea:focus { border-color: transparent; }
-  textarea::placeholder { color: var(--outline); text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
+  textarea::placeholder { color: var(--outline); text-transform: uppercase; font-size: 1rem; letter-spacing: 0.5px; }
 
   .input-actions {
     display: flex;
@@ -288,7 +288,7 @@
 
   .hint {
     font-family: 'Fira Code', monospace;
-    font-size: 9px;
+    font-size: 0.9rem;
     color: var(--outline);
     white-space: nowrap;
     letter-spacing: 0.3px;
@@ -301,7 +301,7 @@
     border: 1px solid var(--outline-dim);
     border-radius: var(--radius);
     cursor: pointer;
-    font-size: 10px;
+    font-size: 1rem;
     font-weight: 700;
     font-family: 'Space Grotesk', sans-serif;
     text-transform: uppercase;

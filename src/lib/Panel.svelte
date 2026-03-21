@@ -311,7 +311,7 @@
     border: none;
     color: var(--text);
     font-family: 'Fira Code', monospace;
-    font-size: 10px;
+    font-size: 1rem;
     font-weight: 700;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -337,7 +337,7 @@
   }
   .badge {
     font-family: 'Fira Code', monospace;
-    font-size: 9px;
+    font-size: 0.9rem;
     color: var(--text-dim);
     background: var(--surface-mid);
     padding: 1px 5px;
@@ -352,7 +352,7 @@
   .badge.cache { color: var(--accent); }
   .timer {
     font-family: 'Fira Code', monospace;
-    font-size: 10px;
+    font-size: 1rem;
     color: var(--text-dim);
     min-width: 36px;
     text-align: center;
@@ -364,7 +364,7 @@
     color: var(--text-dim);
     cursor: pointer;
     font-family: 'Fira Code', monospace;
-    font-size: 9px;
+    font-size: 0.9rem;
     padding: 0 2px;
     text-transform: uppercase;
     transition: color 0.15s;
@@ -375,7 +375,7 @@
     border: none;
     color: var(--text-dim);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 1.4rem;
     padding: 0 2px;
     line-height: 1;
     transition: color 0.15s;
@@ -400,7 +400,7 @@
     border: none;
     color: var(--text-dim);
     font-family: 'Fira Code', monospace;
-    font-size: 10px;
+    font-size: 1rem;
     padding: 0;
     outline: none;
     min-width: 0;
@@ -413,7 +413,7 @@
     color: var(--text-dim);
     cursor: pointer;
     font-family: 'Fira Code', monospace;
-    font-size: 10px;
+    font-size: 1rem;
     padding: 2px 4px;
     transition: color 0.15s;
     flex-shrink: 0;
@@ -437,7 +437,7 @@
   }
   .sp-title {
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 10px;
+    font-size: 1rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -448,7 +448,7 @@
     border: none;
     color: var(--text-dim);
     cursor: pointer;
-    font-size: 16px;
+    font-size: 1.6rem;
     padding: 0 4px;
     line-height: 1;
   }
@@ -464,13 +464,13 @@
     border: none;
     color: var(--text);
     cursor: pointer;
-    font-size: 12px;
+    font-size: 1.2rem;
     text-align: left;
   }
   .sp-item:hover { background: rgba(204, 151, 255, 0.08); }
   .sp-id {
     font-family: 'Fira Code', monospace;
-    font-size: 9px;
+    font-size: 0.9rem;
     color: var(--accent);
     flex-shrink: 0;
   }
@@ -481,7 +481,7 @@
     white-space: nowrap;
   }
   .sp-time {
-    font-size: 10px;
+    font-size: 1rem;
     color: var(--text-dim);
     flex-shrink: 0;
   }

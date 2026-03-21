@@ -93,7 +93,7 @@
   }
 
   .setting-label {
-    font-size: 10px;
+    font-size: 1rem;
     font-family: 'Fira Code', monospace;
     color: var(--text-dim);
     text-transform: uppercase;
@@ -113,7 +113,7 @@
     color: var(--text-dim);
     border-radius: var(--radius);
     cursor: pointer;
-    font-size: 11px;
+    font-size: 1.1rem;
     font-family: 'Fira Code', monospace;
     transition: all 0.12s;
   }

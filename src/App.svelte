@@ -272,14 +272,14 @@
   }
   .status-label {
     font-family: 'Fira Code', monospace;
-    font-size: 9px;
+    font-size: 0.9rem;
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
   .status-value {
     font-family: 'Fira Code', monospace;
-    font-size: 9px;
+    font-size: 0.9rem;
     color: var(--text);
     font-weight: 700;
     text-transform: uppercase;

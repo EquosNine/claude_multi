@@ -146,13 +146,13 @@
   }
   .fp-sep {
     color: var(--text-dim);
-    font-size: 11px;
+    font-size: 1.1rem;
   }
   .fp-crumb {
     background: none;
     border: none;
     color: var(--accent);
-    font-size: 12px;
+    font-size: 1.2rem;
     cursor: pointer;
     padding: 2px 4px;
     border-radius: 3px;
@@ -167,7 +167,7 @@
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 11px;
+    font-size: 1.1rem;
     font-weight: 600;
     flex-shrink: 0;
   }
@@ -178,7 +178,7 @@
     border: none;
     color: var(--text-dim);
     cursor: pointer;
-    font-size: 16px;
+    font-size: 1.6rem;
     padding: 0 4px;
     line-height: 1;
   }
@@ -199,18 +199,18 @@
     border: none;
     color: var(--text);
     cursor: pointer;
-    font-size: 12px;
+    font-size: 1.2rem;
     width: 100%;
     text-align: left;
     font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   }
   .fp-item:hover { background: rgba(124, 58, 237, 0.1); }
-  .fp-folder-icon { font-size: 14px; }
+  .fp-folder-icon { font-size: 1.4rem; }
   .fp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .fp-loading, .fp-error, .fp-empty {
     padding: 16px;
     text-align: center;
-    font-size: 12px;
+    font-size: 1.2rem;
     color: var(--text-dim);
   }
   .fp-error { color: var(--red); }

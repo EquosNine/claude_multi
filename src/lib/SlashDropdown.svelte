@@ -185,7 +185,7 @@
   .slash-dropdown::-webkit-scrollbar-thumb { background: var(--panel-border); border-radius: 3px; }
   .slash-cat-label {
     padding: 4px 10px 2px;
-    font-size: 10px;
+    font-size: 1rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -199,7 +199,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
+    font-size: 1.3rem;
   }
   .slash-item:hover, .slash-item.selected {
     background: rgba(124, 58, 237, 0.12);
@@ -208,11 +208,11 @@
     font-weight: 600;
     min-width: 140px;
     font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-    font-size: 12px;
+    font-size: 1.2rem;
   }
   .slash-item .desc {
     color: var(--text-dim);
-    font-size: 11px;
+    font-size: 1.1rem;
     flex: 1;
     text-align: right;
   }

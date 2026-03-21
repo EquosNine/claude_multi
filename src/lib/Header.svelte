@@ -144,7 +144,7 @@
   }
   .brand {
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 20px;
+    font-size: 2rem;
     font-weight: 800;
     letter-spacing: -0.5px;
     color: var(--accent);
@@ -164,7 +164,7 @@
     padding: 4px 12px;
     color: var(--text-dim);
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 11px;
+    font-size: 1.1rem;
     font-weight: 700;
     letter-spacing: 0.5px;
     text-transform: uppercase;
@@ -189,7 +189,7 @@
     align-items: center;
     justify-content: center;
     color: var(--text-dim);
-    font-size: 14px;
+    font-size: 1.4rem;
     cursor: pointer;
     transition: all 0.15s;
     flex-shrink: 0;
@@ -204,7 +204,7 @@
     border-radius: var(--radius);
     color: var(--text);
     font-family: 'Space Grotesk', sans-serif;
-    font-size: 11px;
+    font-size: 1.1rem;
     font-weight: 700;
     letter-spacing: 0.5px;
     text-transform: uppercase;
@@ -234,7 +234,7 @@
   }
   .panel-count {
     font-family: 'Fira Code', monospace;
-    font-size: 10px;
+    font-size: 1rem;
     color: var(--text-dim);
   }
   .hdr-btn {
@@ -244,7 +244,7 @@
     color: var(--text);
     border-radius: var(--radius);
     cursor: pointer;
-    font-size: 11px;
+    font-size: 1.1rem;
     font-family: 'Space Grotesk', sans-serif;
     font-weight: 600;
     letter-spacing: 0.3px;

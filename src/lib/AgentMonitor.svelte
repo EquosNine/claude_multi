@@ -119,7 +119,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 10px;
+    font-size: 1rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -135,7 +135,7 @@
   }
   .am-count {
     font-family: 'Fira Code', monospace;
-    font-size: 10px;
+    font-size: 1rem;
   }
   .count-running { color: var(--green); }
   .count-waiting { color: var(--text-dim); font-style: italic; }
@@ -147,7 +147,7 @@
   }
   .am-empty-text {
     font-family: 'Fira Code', monospace;
-    font-size: 10px;
+    font-size: 1rem;
     color: var(--outline);
     font-style: italic;
   }
@@ -172,7 +172,7 @@
     align-items: center;
     gap: 6px;
     padding: 3px 10px;
-    font-size: 11px;
+    font-size: 1.1rem;
   }
   .am-dot {
     width: 6px;
@@ -194,13 +194,13 @@
   }
   .am-time {
     font-family: 'Fira Code', monospace;
-    font-size: 10px;
+    font-size: 1rem;
     color: var(--text-dim);
     flex-shrink: 0;
   }
   .am-time.active { color: var(--green); }
   .am-expand {
-    font-size: 10px;
+    font-size: 1rem;
     color: var(--text-dim);
     flex-shrink: 0;
     width: 12px;
@@ -208,7 +208,7 @@
   }
   .am-output {
     padding: 4px 10px 4px 28px;
-    font-size: 10px;
+    font-size: 1rem;
     font-family: 'Fira Code', monospace;
     color: var(--text-dim);
     white-space: pre-wrap;
