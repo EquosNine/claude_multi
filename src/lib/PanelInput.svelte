@@ -3,6 +3,7 @@
   import type { SlashCommand } from './types';
   import SlashDropdown from './SlashDropdown.svelte';
   import { fetchSkills, uploadImage } from './api';
+  import { panelStore } from './stores/panels.svelte';
 
   let { status, onSend, onStop, panelId, cwd, onResume }: {
     status: PanelState['status'];
@@ -17,8 +18,13 @@
   let textareaEl: HTMLTextAreaElement;
   let dynamicCmds = $state<SlashCommand[]>([]);
 
+  let prevCwd: string | undefined;
   $effect(() => {
-    fetchSkills(cwd)
+    const cur = cwd;
+    if (cur === prevCwd) return;
+    prevCwd = cur;
+    if (!cur) return; // skip fetch for empty cwd
+    fetchSkills(cur)
       .then(data => { dynamicCmds = [...data.global, ...data.project, ...data.agents]; })
       .catch(() => {});
   });
@@ -60,7 +66,7 @@
   function handleKeydown(e: KeyboardEvent) {
     if (showSlash) {
       if (['ArrowDown', 'ArrowUp', 'Tab', 'Escape'].includes(e.key)) return;
-      if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) return;
+      if (e.key === 'Enter' && !e.shiftKey) return;
     }
     if (e.ctrlKey && e.key === 'Enter') {
       e.preventDefault();
@@ -72,7 +78,27 @@
     const hasFiles = attachedFiles.length > 0;
     if (!inputValue.trim() && !hasFiles) return;
 
-    let fullPrompt = inputValue.trim();
+    const trimmed = inputValue.trim();
+
+    // Intercept client-side slash commands (Send button / Ctrl+Enter path)
+    if (!hasFiles) {
+      if (trimmed === '/clear') {
+        panelStore.clearMessages(panelId);
+        inputValue = '';
+        if (textareaEl) textareaEl.style.height = 'auto';
+        showSlash = false;
+        return;
+      }
+      if (trimmed === '/resume') {
+        onResume();
+        inputValue = '';
+        if (textareaEl) textareaEl.style.height = 'auto';
+        showSlash = false;
+        return;
+      }
+    }
+
+    let fullPrompt = trimmed;
     if (hasFiles) {
       const fileContents = attachedFiles
         .map(f => f.isImage
@@ -222,7 +248,7 @@
           <button class="send-btn stop" onclick={onStop}>Stop</button>
         {/if}
         <button class="send-btn" onclick={handleSend}>
-          {status === 'running' ? 'Queue' : 'Send'}
+          Send
         </button>
       </div>
     </div>

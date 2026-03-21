@@ -1,6 +1,6 @@
 # claude-multi Development Master Guide
 
-**Last Updated:** 2026-03-21
+**Last Updated:** 2026-03-22
 
 ## Project Overview
 Multi-panel browser UI for running multiple Claude Code CLI instances in parallel. Enables developers to work across multiple project directories simultaneously from a single dashboard.
@@ -25,6 +25,7 @@ Multi-panel browser UI for running multiple Claude Code CLI instances in paralle
 | claude-multi | Folder picker with breadcrumbs | Complete | P1 | -- |
 | claude-multi | Agent monitor (expandable) | Complete | P1 | -- |
 | claude-multi | UX Gaps V2 (9 tasks) | Not Started | P0 | Execute tasks |
+| claude-multi | DuckDB Persistence (3 tasks) | Reviewed | P1 | Test manually, then archive |
 
 ## Roadmap
 
@@ -40,7 +41,7 @@ Multi-panel browser UI for running multiple Claude Code CLI instances in paralle
   - Smart grid layout for 1-6 panels
 
 ### Next (Upcoming)
-- Persistent conversation sessions (--resume)
+- **DuckDB Persistence** — Replace localStorage with DuckDB file at `~/.claude-multi/conversations.db`; unlimited history, SQL queries, FTS search across full assistant text (3 tasks)
 - Panel presets / saved configurations
 
 ### Later (Backlog)
@@ -65,6 +66,7 @@ Multi-panel browser UI for running multiple Claude Code CLI instances in paralle
 | 2026-03-21 | Monotonic panel ID counter | Fix collision bug where `panels.length` reuses IDs after panel removal |
 | 2026-03-21 | In-UI flash notifications (not browser) | Visual flash on panel border when task completes; no permission dialogs, works everywhere |
 | 2026-03-21 | Layout mode cycle (auto/1/2/3 col) | Auto mode adapts to panel count; manual overrides for user preference |
+| 2026-03-21 | DuckDB for conversation persistence | Replaces localStorage (5MB cap) with ~/.claude-multi/conversations.db; enables SQL queries and FTS across full assistant text |
 
 ## Learnings
-No learnings files yet. Will be created after first `/imma3-review` run.
+- [DuckDB Persistence 2026-03-22](claude_detailed_plans/learnings/claude-multi_duckdb-persistence_2026-03-22.md) — Svelte 5 `$effect` reactive loop; block components as popovers need `position: absolute`

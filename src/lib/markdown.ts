@@ -52,7 +52,7 @@ hljs.registerLanguage('swift', swift);
 hljs.registerLanguage('dart', dart);
 
 const md = new MarkdownIt({
-  html: false,
+  html: true,
   linkify: true,
   typographer: false,
   breaks: true,
@@ -78,6 +78,24 @@ md.renderer.rules.link_open = function (tokens: any, idx: any, options: any, env
   return defaultLinkRender(tokens, idx, options, env, self);
 };
 
-export function renderMarkdown(text: string): string {
-  return md.render(text);
+const htmlCache = new Map<string, string>();
+
+export function renderMarkdown(text: string, skipCache = false): string {
+  if (!skipCache) {
+    const cached = htmlCache.get(text);
+    if (cached !== undefined) return cached;
+  }
+  const html = md.render(text);
+  if (!skipCache) {
+    if (htmlCache.size > 500) {
+      const iter = htmlCache.keys();
+      for (let i = 0; i < 100; i++) {
+        const r = iter.next();
+        if (r.done) break;
+        htmlCache.delete(r.value);
+      }
+    }
+    htmlCache.set(text, html);
+  }
+  return html;
 }

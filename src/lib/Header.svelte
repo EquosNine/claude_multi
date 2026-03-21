@@ -1,8 +1,18 @@
 <script lang="ts">
   import { ws } from './stores/ws.svelte';
   import { panelStore } from './stores/panels.svelte';
+  import { settingsStore } from './stores/settings.svelte';
   import Settings from './Settings.svelte';
   import ConversationHistory from './ConversationHistory.svelte';
+
+  const MODEL_SHORT: Record<string, string> = {
+    'claude-haiku-4-5-20251001': 'Haiku',
+    'claude-sonnet-4-6': 'Sonnet',
+    'claude-opus-4-6': 'Opus',
+  };
+
+  let modelBadge = $derived(MODEL_SHORT[settingsStore.model] ?? settingsStore.model);
+  let effortBadge = $derived(settingsStore.effort.toUpperCase());
 
   let connected = $derived(ws.connected);
   let canAdd = $derived(panelStore.panels.length < panelStore.maxPanels);
@@ -121,6 +131,7 @@
         - Tab
       </button>
     {/if}
+    <span class="model-badge" title="Model · Effort (change in settings)">{modelBadge} · {effortBadge}</span>
     <ConversationHistory />
     <Settings />
   </div>
@@ -255,4 +266,14 @@
   .hdr-btn:disabled { opacity: 0.3; cursor: not-allowed; }
   .hdr-btn.danger:hover { border-color: var(--red); color: var(--red); }
   .hdr-btn.terminal-btn:hover { border-color: var(--green); color: var(--green); }
+  .model-badge {
+    font-family: 'Fira Code', monospace;
+    font-size: 1rem;
+    color: var(--text-dim);
+    border: 1px solid var(--outline-dim);
+    border-radius: var(--radius);
+    padding: 2px 8px;
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+  }
 </style>

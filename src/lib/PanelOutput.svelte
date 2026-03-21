@@ -1,8 +1,16 @@
 <script lang="ts">
   import type { OutputMessage } from './types';
   import { renderMarkdown } from './markdown';
+  import QuestionSelector from './QuestionSelector.svelte';
 
-  let { messages, status = 'idle' }: { messages: OutputMessage[]; status?: string } = $props();
+  let { messages, status = 'idle', suggestions = [], onSuggestionClick, onBranch, onQuestionAnswer }: {
+    messages: OutputMessage[];
+    status?: string;
+    suggestions?: string[];
+    onSuggestionClick?: (suggestion: string) => void;
+    onBranch?: (uuid: string) => void;
+    onQuestionAnswer?: (questionId: string, answer: string) => void;
+  } = $props();
 
   let outputEl: HTMLDivElement;
   let userScrolledUp = $state(false);
@@ -127,12 +135,37 @@
     {:else}
       {@const msg = item.msg}
       {#if msg.type === 'assistant'}
-        <div class="msg msg-assistant">{@html renderMarkdown(msg.text)}</div>
+        <div class="msg msg-assistant" class:structured={msg.isStructuredOutput} class:streaming={msg.streaming}>
+          {@html renderMarkdown(msg.text, msg.streaming)}
+          {#if msg.uuid && onBranch && !msg.streaming}
+            <button class="branch-btn" onclick={() => onBranch(msg.uuid!)} title="Branch from here">&#x2387;</button>
+          {/if}
+        </div>
+      {:else if msg.type === 'question'}
+        <QuestionSelector
+          question={msg.text}
+          options={msg.questionOptions || []}
+          answered={msg.questionAnswered || false}
+          onAnswer={(answer) => {
+            msg.questionAnswered = true;
+            onQuestionAnswer?.(msg.questionId!, answer);
+          }}
+        />
       {:else}
         <div class="msg msg-{msg.type}">{msg.text}</div>
       {/if}
     {/if}
   {/each}
+
+  {#if suggestions.length > 0 && status !== 'running'}
+    <div class="suggestion-chips">
+      {#each suggestions as suggestion}
+        <button class="suggestion-chip" onclick={() => onSuggestionClick?.(suggestion)}>
+          {suggestion}
+        </button>
+      {/each}
+    </div>
+  {/if}
 </div>
 
 {#if userScrolledUp}
@@ -285,6 +318,76 @@
     color: var(--text);
   }
 
+  /* ── HTML elements inside assistant messages ── */
+  .msg-assistant :global(details) {
+    border: 1px solid var(--outline-dim);
+    border-radius: var(--radius);
+    margin: 6px 0;
+    overflow: hidden;
+  }
+
+  .msg-assistant :global(summary) {
+    padding: 4px 10px;
+    background: var(--surface-low);
+    cursor: pointer;
+    font-size: 1.1rem;
+    color: var(--text-dim);
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .msg-assistant :global(summary::before) {
+    content: '▸';
+    font-size: 0.8rem;
+    color: var(--accent);
+    transition: transform 0.15s;
+  }
+
+  .msg-assistant :global(details[open] > summary::before) {
+    content: '▾';
+  }
+
+  .msg-assistant :global(summary:hover) {
+    color: var(--text);
+    background: var(--surface-mid);
+  }
+
+  .msg-assistant :global(details > *:not(summary)) {
+    padding: 6px 10px;
+    border-top: 1px solid var(--outline-dim);
+  }
+
+  .msg-assistant :global(table) {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 6px 0;
+    font-size: 1.2rem;
+  }
+
+  .msg-assistant :global(th) {
+    text-align: left;
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--outline-dim);
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .msg-assistant :global(td) {
+    padding: 3px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: top;
+  }
+
+  .msg-assistant :global(tr:last-child td) {
+    border-bottom: none;
+  }
+
   .msg-system {
     color: var(--text-dim);
     font-size: 1.1rem;
@@ -325,4 +428,84 @@
   }
 
   .scroll-bottom-btn:hover { opacity: 1; }
+
+  /* ── Suggestion chips ── */
+  .suggestion-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 0 4px;
+  }
+
+  .suggestion-chip {
+    background: rgba(204, 151, 255, 0.08);
+    border: 1px solid var(--outline-dim);
+    border-radius: 16px;
+    color: var(--accent);
+    font-family: 'Fira Code', monospace;
+    font-size: 1rem;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .suggestion-chip:hover {
+    border-color: var(--accent);
+    background: rgba(204, 151, 255, 0.15);
+    color: var(--text);
+  }
+
+  /* ── Branch button ── */
+  .msg-assistant {
+    position: relative;
+  }
+
+  .branch-btn {
+    position: absolute;
+    top: 4px;
+    right: 0;
+    background: none;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 1px 4px;
+    border-radius: var(--radius);
+    opacity: 0;
+    transition: all 0.15s;
+  }
+
+  .msg-assistant:hover .branch-btn {
+    opacity: 0.6;
+  }
+
+  .branch-btn:hover {
+    opacity: 1 !important;
+    color: var(--accent);
+    border-color: var(--outline-dim);
+    background: var(--surface-mid);
+  }
+
+  /* ── Streaming cursor ── */
+  .msg-assistant.streaming::after {
+    content: '▊';
+    color: var(--accent);
+    animation: blink 0.6s step-end infinite;
+    font-size: 1em;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  /* ── Structured output ── */
+  .msg-assistant.structured {
+    border-left: 2px solid var(--green);
+    padding-left: 8px;
+  }
 </style>

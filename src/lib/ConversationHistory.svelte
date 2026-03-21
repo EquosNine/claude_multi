@@ -9,6 +9,9 @@
   let selected = $state<ConversationRecord | null>(null);
   let resumePanelId = $state<number>(-1);
   let deleteConfirm = $state<string | null>(null); // sessionId awaiting confirm
+  let searchResults = $state<ConversationRecord[] | null>(null); // null = use store list
+  let searching = $state(false);
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
   function toggle() {
     open = !open;
@@ -20,18 +23,38 @@
     selected = null;
   }
 
-  let filtered = $derived.by(() => {
-    let list = conversationStore.conversations;
-    if (filterStarred) list = list.filter(c => c.starred);
-    if (query.trim()) {
-      const q = query.toLowerCase();
-      list = list.filter(c =>
-        c.label.toLowerCase().includes(q) ||
-        c.cwd.toLowerCase().includes(q) ||
-        c.panelName.toLowerCase().includes(q),
-      );
+  function onQueryChange(q: string) {
+    if (searchTimer) clearTimeout(searchTimer);
+    if (!q.trim()) {
+      searchResults = null;
+      searching = false;
+      return;
     }
-    return list;
+    searching = true;
+    searchTimer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/conversations/search?q=${encodeURIComponent(q.trim())}`);
+        if (res.ok) {
+          const { conversations } = await res.json();
+          searchResults = conversations ?? [];
+        }
+      } catch {
+        searchResults = [];
+      } finally {
+        searching = false;
+      }
+    }, 300);
+  }
+
+  $effect(() => {
+    onQueryChange(query);
+  });
+
+  // filtered: starred filter applied client-side on top of either source
+  let filtered = $derived.by(() => {
+    const base = searchResults !== null ? searchResults : conversationStore.conversations;
+    if (filterStarred) return base.filter((c: ConversationRecord) => c.starred);
+    return base;
   });
 
   function formatRelative(ts: number): string {
@@ -124,7 +147,7 @@
           <input
             class="search-input"
             type="text"
-            placeholder="Search..."
+            placeholder={searching ? 'Searching…' : 'Search full history…'}
             bind:value={query}
             spellcheck="false"
           />

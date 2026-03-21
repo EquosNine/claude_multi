@@ -10,8 +10,28 @@
   import FolderPicker from './FolderPicker.svelte';
   import AgentMonitor from './AgentMonitor.svelte';
   import TerminalPanel from './TerminalPanel.svelte';
+  import { validateCwd } from './api';
+  import { settingsStore } from './stores/settings.svelte';
+  import type { ModelId, EffortLevel } from './types';
 
   let { panel }: { panel: PanelState } = $props();
+
+  const MODELS: { id: ModelId; label: string }[] = [
+    { id: 'claude-haiku-4-5-20251001', label: 'H' },
+    { id: 'claude-sonnet-4-6',         label: 'S' },
+    { id: 'claude-opus-4-6',           label: 'O' },
+  ];
+
+  const EFFORTS: { id: EffortLevel; label: string }[] = [
+    { id: 'low',    label: 'Lo' },
+    { id: 'medium', label: 'Md' },
+    { id: 'high',   label: 'Hi' },
+    { id: 'max',    label: 'Mx' },
+  ];
+
+  let showModelPicker = $state(false);
+
+  let cwdValid = $state<boolean | null>(null); // null = unchecked
 
   let flashClass = $state('');
   let prevStatus = $state<string>('idle');
@@ -33,6 +53,7 @@
   function handleFolderSelect(path: string) {
     panelStore.updateCwd(panel.id, path);
     showFolderPicker = false;
+    cwdValid = true; // folder picker only returns valid dirs
   }
 
   let timerText = $state('--:--');
@@ -63,8 +84,11 @@
     panelStore.updateName(panel.id, (e.target as HTMLInputElement).value);
   }
 
-  function handleCwdChange(e: Event) {
-    panelStore.updateCwd(panel.id, (e.target as HTMLInputElement).value);
+  async function handleCwdChange(e: Event) {
+    const path = (e.target as HTMLInputElement).value;
+    panelStore.updateCwd(panel.id, path);
+    cwdValid = null;
+    cwdValid = await validateCwd(path);
   }
 
   function handleClose() {
@@ -81,6 +105,28 @@
       });
       return;
     }
+
+    // Check for branch info from localStorage (set by branchFromMessage)
+    const branchKey = `panel-branch-${panel.id}`;
+    const branchRaw = localStorage.getItem(branchKey);
+    if (branchRaw && !resume) {
+      const branch = JSON.parse(branchRaw);
+      localStorage.removeItem(branchKey);
+      panelStore.addMessage(panel.id, {
+        id: panelStore.nextMsgId(),
+        type: 'system',
+        text: panel.status === 'running' ? `> ${prompt} [queued]` : `> ${prompt}`,
+      });
+      panelStore.clearSuggestions(panel.id);
+      ws.send({
+        type: 'prompt', panelId: panel.id, cwd: panel.cwd, prompt,
+        resume: branch.sessionId, resumeAt: branch.resumeAt,
+        model: panel.model, effort: panel.effort,
+        ...buildExtras(),
+      });
+      return;
+    }
+
     if (!resume) {
       conversationStore.setPending(
         panel.id,
@@ -94,7 +140,73 @@
       type: 'system',
       text: panel.status === 'running' ? `> ${prompt} [queued]` : `> ${prompt}`,
     });
-    ws.send({ type: 'prompt', panelId: panel.id, cwd: panel.cwd, prompt, ...(resume ? { resume } : {}) });
+    panelStore.clearSuggestions(panel.id);
+    ws.send({
+      type: 'prompt', panelId: panel.id, cwd: panel.cwd, prompt,
+      model: panel.model, effort: panel.effort,
+      ...(resume ? { resume } : {}),
+      ...buildExtras(),
+    });
+  }
+
+  function buildExtras(): Record<string, any> {
+    const extras: Record<string, any> = {};
+
+    // MCP servers
+    const mcpRecord: Record<string, any> = {};
+    for (const name of panel.mcpServers) {
+      const config = settingsStore.mcpServers.find((m: any) => m.name === name);
+      if (config && config.enabled) {
+        mcpRecord[name] = { command: config.command, args: config.args, env: config.env };
+      }
+    }
+    if (Object.keys(mcpRecord).length > 0) extras.mcpServers = mcpRecord;
+
+    // Structured output
+    if (panel.structuredOutputEnabled && panel.structuredOutputSchema) {
+      try {
+        extras.outputFormat = { type: 'json_schema', schema: JSON.parse(panel.structuredOutputSchema) };
+      } catch {}
+    }
+
+    return extras;
+  }
+
+  function handleBranch(uuid: string) {
+    const branchInfo = panelStore.branchFromMessage(panel.id, uuid);
+    if (!branchInfo) return;
+    const newPanel = panelStore.createPanel('claude');
+    if (!newPanel) return;
+    panelStore.updateCwd(newPanel.id, branchInfo.cwd);
+    panelStore.updateModel(newPanel.id, branchInfo.model);
+    panelStore.updateEffort(newPanel.id, branchInfo.effort);
+    panelStore.updateName(newPanel.id, `${branchInfo.name || 'Panel'} [branch]`);
+    panelStore.addMessage(newPanel.id, {
+      id: panelStore.nextMsgId(),
+      type: 'system',
+      text: `Branched from ${branchInfo.sessionId.slice(0, 12)}... — send a prompt to continue from that point.`,
+    });
+    localStorage.setItem(`panel-branch-${newPanel.id}`, JSON.stringify({
+      sessionId: branchInfo.sessionId,
+      resumeAt: branchInfo.resumeAt,
+    }));
+  }
+
+  function toggleMcp(name: string) {
+    const current = [...panel.mcpServers];
+    const idx = current.indexOf(name);
+    if (idx >= 0) current.splice(idx, 1);
+    else current.push(name);
+    panelStore.updateMcpServers(panel.id, current);
+  }
+
+  function saveSchema() {
+    panelStore.setStructuredOutput(panel.id, panel.structuredOutputEnabled, schemaText);
+    showSchemaEditor = false;
+  }
+
+  function handleQuestionAnswer(questionId: string, answer: string) {
+    ws.send({ type: 'question_response', panelId: panel.id, questionId, answer });
   }
 
   function handleStop() {
@@ -120,6 +232,8 @@
   }
 
   let showMoveMenu = $state(false);
+  let showSchemaEditor = $state(false);
+  let schemaText = $state(panel.structuredOutputSchema || '');
   let otherTabs = $derived(panelStore.tabGroups.filter(g => g !== panel.group));
 
   function moveToTab(group: string) {
@@ -128,10 +242,11 @@
   }
 
   $effect(() => {
-    if (!showMoveMenu) return;
+    if (!showMoveMenu && !showModelPicker) return;
     function onOutside(e: MouseEvent) {
       const target = e.target as Element;
-      if (!target.closest('.move-wrap')) showMoveMenu = false;
+      if (showMoveMenu && !target.closest('.move-wrap')) showMoveMenu = false;
+      if (showModelPicker && !target.closest('.model-picker-wrap')) showModelPicker = false;
     }
     window.addEventListener('mousedown', onOutside);
     return () => window.removeEventListener('mousedown', onOutside);
@@ -180,6 +295,9 @@
       : ''
   );
 
+  let modelShort = $derived(MODELS.find(m => m.id === panel.model)?.label ?? 'S');
+  let effortShort = $derived(EFFORTS.find(e => e.id === panel.effort)?.label ?? 'Hi');
+
   let statusColor = $derived.by(() => {
     switch (panel.status) {
       case 'running': return 'var(--green)';
@@ -203,12 +321,74 @@
         value={panel.name}
         onchange={handleNameChange}
       />
+      {#if panel.panelType !== 'terminal'}
+        <div class="model-picker-wrap">
+          <button class="model-tag" onclick={() => showModelPicker = !showModelPicker} title="Model / Reasoning">
+            {modelShort}<span class="model-tag-sep">/</span>{effortShort}
+          </button>
+          {#if showModelPicker}
+            <div class="model-picker-popover">
+              <div class="mp-row">
+                <span class="mp-label">Model</span>
+                <div class="mp-btns">
+                  {#each MODELS as m}
+                    <button
+                      class="mp-btn"
+                      class:active={panel.model === m.id}
+                      onclick={() => panelStore.updateModel(panel.id, m.id)}
+                    >{m.label}</button>
+                  {/each}
+                </div>
+              </div>
+              <div class="mp-row">
+                <span class="mp-label">Reasoning</span>
+                <div class="mp-btns">
+                  {#each EFFORTS as e}
+                    <button
+                      class="mp-btn"
+                      class:active={panel.effort === e.id}
+                      onclick={() => panelStore.updateEffort(panel.id, e.id)}
+                    >{e.label}</button>
+                  {/each}
+                </div>
+              </div>
+              {#if settingsStore.mcpServers.length > 0}
+                <div class="mp-row">
+                  <span class="mp-label">MCP</span>
+                  <div class="mp-btns mp-btns-wrap">
+                    {#each settingsStore.mcpServers as server}
+                      <button
+                        class="mp-btn"
+                        class:active={panel.mcpServers.includes(server.name)}
+                        onclick={() => toggleMcp(server.name)}
+                      >{server.name}</button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+              <div class="mp-row">
+                <span class="mp-label">JSON</span>
+                <div class="mp-btns">
+                  <button
+                    class="mp-btn"
+                    class:active={panel.structuredOutputEnabled}
+                    onclick={() => panelStore.setStructuredOutput(panel.id, !panel.structuredOutputEnabled, panel.structuredOutputSchema)}
+                  >{panel.structuredOutputEnabled ? 'ON' : 'OFF'}</button>
+                  {#if panel.structuredOutputEnabled}
+                    <button class="mp-btn" onclick={() => { schemaText = panel.structuredOutputSchema; showSchemaEditor = true; }}>Schema</button>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
     <div class="titlebar-right">
       {#if panel.panelType !== 'terminal'}
-        {#if agentsText}
-          <button class="badge agents" onclick={() => showAgentMonitor = !showAgentMonitor}>
-            {agentsText}
+        {#if agentsText || panel.agentDetails.length > 0}
+          <button class="badge agents" class:pulsing={activeAgentCount > 0} onclick={() => showAgentMonitor = !showAgentMonitor}>
+            {agentsText || `${panel.agentDetails.length} agents`}
           </button>
         {/if}
         {#if costText}
@@ -247,7 +427,9 @@
     <input
       type="text"
       class="cwd-input"
-      placeholder="C:\path\to\project"
+      class:cwd-invalid={cwdValid === false}
+      class:cwd-ok={cwdValid === true}
+      placeholder="Working directory..."
       spellcheck="false"
       value={panel.cwd}
       onchange={handleCwdChange}
@@ -268,7 +450,14 @@
   {#if panel.panelType === 'terminal'}
     <TerminalPanel panelId={panel.id} cwd={panel.cwd} />
   {:else}
-    <PanelOutput messages={panel.messages} status={panel.status} />
+    <PanelOutput
+      messages={panel.messages}
+      status={panel.status}
+      suggestions={panel.suggestions}
+      onSuggestionClick={(s) => handleSend(s)}
+      onBranch={handleBranch}
+      onQuestionAnswer={handleQuestionAnswer}
+    />
     <AgentMonitor
       agents={panel.agentDetails}
       visible={showAgentMonitor || panel.status === 'running' || panel.agentDetails.some(a => a.status === 'running')}
@@ -289,6 +478,24 @@
               <span class="sp-time">{new Date(session.timestamp).toLocaleString()}</span>
             </button>
           {/each}
+        </div>
+      </div>
+    {/if}
+
+    {#if showSchemaEditor}
+      <div class="schema-editor">
+        <div class="sp-header">
+          <span class="sp-title">JSON Schema</span>
+          <button class="sp-close" onclick={() => showSchemaEditor = false}>&times;</button>
+        </div>
+        <textarea
+          class="schema-textarea"
+          bind:value={schemaText}
+          placeholder="Paste JSON schema here..."
+          rows={6}
+        ></textarea>
+        <div class="schema-actions">
+          <button class="mp-btn active" onclick={saveSchema}>Save</button>
         </div>
       </div>
     {/if}
@@ -443,6 +650,72 @@
   }
   .move-item:hover { background: rgba(204, 151, 255, 0.1); color: var(--accent); }
 
+  /* ---- Model picker ---- */
+  .model-picker-wrap { position: relative; display: flex; align-items: center; }
+  .model-tag {
+    background: rgba(204, 151, 255, 0.08);
+    border: 1px solid var(--outline-dim);
+    border-radius: var(--radius);
+    color: var(--accent);
+    font-family: 'Fira Code', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 1px 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .model-tag:hover { border-color: var(--accent); background: rgba(204, 151, 255, 0.15); }
+  .model-tag-sep { color: var(--text-dim); margin: 0 1px; }
+  .model-picker-popover {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: var(--surface-low);
+    border: 1px solid var(--outline-dim);
+    border-radius: var(--radius-lg);
+    padding: 8px 10px;
+    min-width: 180px;
+    z-index: 100;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .mp-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mp-label {
+    font-size: 0.85rem;
+    font-family: 'Fira Code', monospace;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    min-width: 44px;
+  }
+  .mp-btns { display: flex; gap: 3px; }
+  .mp-btns-wrap { flex-wrap: wrap; }
+  .mp-btn {
+    padding: 2px 6px;
+    border: 1px solid var(--outline-dim);
+    background: var(--surface-mid);
+    color: var(--text-dim);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: 'Fira Code', monospace;
+    transition: all 0.12s;
+  }
+  .mp-btn:hover { border-color: var(--accent); color: var(--text); }
+  .mp-btn.active {
+    border-color: var(--accent);
+    background: rgba(204, 151, 255, 0.12);
+    color: var(--accent);
+  }
+
   /* ---- CWD bar ---- */
   .cwd-bar {
     display: flex;
@@ -468,6 +741,8 @@
   }
   .cwd-input:focus { color: var(--text); }
   .cwd-input::placeholder { color: var(--outline); }
+  .cwd-input.cwd-invalid { color: var(--red); }
+  .cwd-input.cwd-ok { color: var(--green); }
   .cwd-browse {
     background: none;
     border: none;
@@ -545,5 +820,35 @@
     font-size: 1rem;
     color: var(--text-dim);
     flex-shrink: 0;
+  }
+
+  /* ---- Schema editor ---- */
+  .schema-editor {
+    border-top: 1px solid var(--outline-dim);
+    background: var(--surface-high);
+    flex-shrink: 0;
+    padding: 0;
+  }
+  .schema-textarea {
+    width: 100%;
+    background: var(--panel-bg);
+    color: var(--text);
+    border: none;
+    border-top: 1px solid var(--outline-dim);
+    font-family: 'Fira Code', monospace;
+    font-size: 1rem;
+    padding: 8px 10px;
+    resize: vertical;
+    outline: none;
+    min-height: 80px;
+    max-height: 200px;
+    box-sizing: border-box;
+  }
+  .schema-textarea::placeholder { color: var(--outline); }
+  .schema-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 4px 10px;
+    border-top: 1px solid var(--outline-dim);
   }
 </style>

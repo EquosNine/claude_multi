@@ -6,7 +6,7 @@
   import { panelStore } from './lib/stores/panels.svelte';
   import { settingsStore } from './lib/stores/settings.svelte';
   import { conversationStore } from './lib/stores/conversations.svelte';
-  import type { WsIncoming, ClaudeStreamEvent, CostData } from './lib/types';
+  import type { WsIncoming, ClaudeStreamEvent } from './lib/types';
 
   // Initialize
   panelStore.restorePanels();
@@ -16,6 +16,23 @@
   $effect(() => {
     document.documentElement.style.setProperty('--font-scale', String(settingsStore.fontScale));
   });
+
+  // ── Streaming state ──
+  // Track the currently-streaming message ID per panel
+  const streamingMsgIds = new Map<number, string>();
+
+  // ── RAF delta batching (Fix 2) ──
+  // Buffer text deltas and flush once per animation frame
+  const deltaBuffers = new Map<number, { msgId: string; text: string }>();
+  let rafScheduled = false;
+
+  function flushDeltas() {
+    for (const [panelId, { msgId, text }] of deltaBuffers) {
+      panelStore.appendToMessage(panelId, msgId, text);
+    }
+    deltaBuffers.clear();
+    rafScheduled = false;
+  }
 
   // Route incoming WS messages to panel store
   ws.subscribe((msg: WsIncoming) => {
@@ -36,6 +53,95 @@
       case 'agent_detail':
         panelStore.updateAgentDetail(msg.panelId, msg.agent);
         break;
+      case 'agent_progress':
+        panelStore.updateAgentProgress(msg.panelId, msg.toolUseId, msg.summary, msg.lastToolName);
+        break;
+      case 'prompt_suggestion':
+        panelStore.addSuggestion(msg.panelId, msg.suggestion);
+        break;
+      case 'question':
+        panelStore.addMessage(msg.panelId, {
+          id: panelStore.nextMsgId(),
+          type: 'question',
+          text: msg.question,
+          questionId: msg.questionId,
+          questionOptions: msg.options,
+          questionAnswered: false,
+        });
+        break;
+      case 'structured_output':
+        panelStore.addMessage(msg.panelId, {
+          id: panelStore.nextMsgId(),
+          type: 'assistant',
+          text: '```json\n' + JSON.stringify(msg.data, null, 2) + '\n```',
+          isStructuredOutput: true,
+        });
+        break;
+      case 'session_cwd':
+        panelStore.updateCwd(msg.panelId, msg.cwd);
+        break;
+      case 'token_update':
+        panelStore.setCost(msg.panelId, {
+          costUsd: msg.costUsd,
+          inputTokens: msg.inputTokens,
+          outputTokens: msg.outputTokens,
+          cacheReadTokens: msg.cacheReadTokens,
+          cacheCreationTokens: msg.cacheCreationTokens,
+          durationMs: msg.durationMs,
+        });
+        break;
+
+      // ── Token-level text streaming (Fix 1) ──
+      case 'text_stream_start': {
+        // Flush any pending deltas for this panel before starting a new block
+        const pending = deltaBuffers.get(msg.panelId);
+        if (pending) {
+          panelStore.appendToMessage(msg.panelId, pending.msgId, pending.text);
+          deltaBuffers.delete(msg.panelId);
+        }
+        const msgId = panelStore.nextMsgId();
+        streamingMsgIds.set(msg.panelId, msgId);
+        panelStore.clearSuggestions(msg.panelId);
+        panelStore.addMessage(msg.panelId, {
+          id: msgId,
+          type: 'assistant',
+          text: '',
+          uuid: msg.uuid,
+          streaming: true,
+        });
+        break;
+      }
+      case 'text_delta': {
+        const currentMsgId = streamingMsgIds.get(msg.panelId);
+        if (currentMsgId) {
+          const existing = deltaBuffers.get(msg.panelId);
+          if (existing && existing.msgId === currentMsgId) {
+            existing.text += msg.text;
+          } else {
+            deltaBuffers.set(msg.panelId, { msgId: currentMsgId, text: msg.text });
+          }
+          if (!rafScheduled) {
+            rafScheduled = true;
+            requestAnimationFrame(flushDeltas);
+          }
+        }
+        break;
+      }
+      case 'text_stream_end': {
+        // Flush any remaining buffered text immediately
+        const buf = deltaBuffers.get(msg.panelId);
+        if (buf) {
+          panelStore.appendToMessage(msg.panelId, buf.msgId, buf.text);
+          deltaBuffers.delete(msg.panelId);
+        }
+        const currentMsgId = streamingMsgIds.get(msg.panelId);
+        if (currentMsgId) {
+          panelStore.finalizeStreamingMessage(msg.panelId, currentMsgId);
+          streamingMsgIds.delete(msg.panelId);
+        }
+        break;
+      }
+
       case 'done': {
         panelStore.addMessage(msg.panelId, {
           id: panelStore.nextMsgId(),
@@ -98,6 +204,7 @@
             text: `Session: ${sid}`,
           });
           panelStore.setSessionId(panelId, sid);
+          panelStore.clearSuggestions(panelId);
           const panel = panelStore.getPanel(panelId);
           panelStore.saveSession(panelId, sid, panel?.cwd || '', panel?.name || `Panel ${panelId + 1}`);
           conversationStore.start(panelId, sid);
@@ -105,16 +212,12 @@
         break;
       }
       case 'assistant': {
+        // Text blocks are already rendered via token streaming (text_delta).
+        // Only process tool_use blocks here.
         const content = data.message?.content;
         if (!content || !Array.isArray(content)) break;
         for (const block of content) {
-          if (block.type === 'text' && block.text) {
-            panelStore.addMessage(panelId, {
-              id: panelStore.nextMsgId(),
-              type: 'assistant',
-              text: block.text,
-            });
-          } else if (block.type === 'tool_use') {
+          if (block.type === 'tool_use') {
             const summary = summarizeToolUse(block.name, block.input);
             panelStore.addMessage(panelId, {
               id: panelStore.nextMsgId(),
@@ -153,20 +256,6 @@
             type: 'assistant',
             text: data.result,
           });
-        }
-        // Parse cost/token/cache/duration data
-        {
-          const cost: CostData = {
-            costUsd: data.total_cost_usd ?? data.cost_usd ?? 0,
-            inputTokens: data.usage?.input_tokens ?? 0,
-            outputTokens: data.usage?.output_tokens ?? 0,
-            cacheReadTokens: data.usage?.cache_read_input_tokens ?? 0,
-            cacheCreationTokens: data.usage?.cache_creation_input_tokens ?? 0,
-            durationMs: data.duration_ms ?? null,
-          };
-          if (cost.costUsd > 0 || cost.inputTokens > 0 || cost.cacheReadTokens > 0 || cost.durationMs !== null) {
-            panelStore.updateCost(panelId, cost);
-          }
         }
         break;
     }

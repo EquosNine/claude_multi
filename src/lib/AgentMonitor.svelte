@@ -2,10 +2,11 @@
   import type { AgentDetail } from './types';
   import { formatTime } from './utils';
 
-  let { agents, visible, panelRunning = false }: {
+  let { agents, visible, panelRunning = false, onClose }: {
     agents: AgentDetail[];
     visible: boolean;
     panelRunning?: boolean;
+    onClose?: () => void;
   } = $props();
 
   let expandedId = $state<string | null>(null);
@@ -66,9 +67,15 @@
             <div class="am-item-header">
               <span class="am-dot running"></span>
               <span class="am-desc">{agent.description || 'Agent'}</span>
+              {#if agent.lastToolName}
+                <span class="am-tool-badge">{agent.lastToolName}</span>
+              {/if}
               <span class="am-time active">{elapsed}</span>
               <span class="am-expand">{expandedId === agent.toolUseId ? '▾' : '▸'}</span>
             </div>
+            {#if agent.progressSummary}
+              <div class="am-progress">{agent.progressSummary}</div>
+            {/if}
             {#if expandedId === agent.toolUseId && agent.output}
               <div class="am-output">{agent.output}</div>
             {/if}
@@ -83,8 +90,13 @@
               <span class="am-time">done</span>
               <span class="am-expand">{expandedId === agent.toolUseId ? '▾' : '▸'}</span>
             </div>
-            {#if expandedId === agent.toolUseId && agent.output}
-              <div class="am-output">{agent.output}</div>
+            {#if expandedId === agent.toolUseId}
+              {#if agent.progressSummary}
+                <div class="am-progress">{agent.progressSummary}</div>
+              {/if}
+              {#if agent.output}
+                <div class="am-output">{agent.output}</div>
+              {/if}
             {/if}
           </button>
         {/each}
@@ -205,6 +217,25 @@
     flex-shrink: 0;
     width: 12px;
     text-align: center;
+  }
+  .am-progress {
+    padding: 2px 10px 2px 28px;
+    font-size: 1rem;
+    font-family: 'Fira Code', monospace;
+    color: var(--green);
+    font-style: italic;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .am-tool-badge {
+    font-family: 'Fira Code', monospace;
+    font-size: 0.85rem;
+    color: var(--blue);
+    background: rgba(93, 163, 250, 0.1);
+    padding: 0 4px;
+    border-radius: 3px;
+    flex-shrink: 0;
   }
   .am-output {
     padding: 4px 10px 4px 28px;

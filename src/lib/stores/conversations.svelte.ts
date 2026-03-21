@@ -1,32 +1,55 @@
 import type { ConversationRecord } from '../types';
 
-const STORAGE_KEY = 'claude-multi-conversations';
-const MAX_CONVERSATIONS = 200;
-
 // Stash the prompt+cwd between handleSend and the system-init event
 const pending = new Map<number, { prompt: string; cwd: string; panelName: string }>();
 
-function load(): ConversationRecord[] {
+async function fetchConversations(): Promise<ConversationRecord[]> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return [];
+    const res = await fetch('/api/conversations?limit=500');
+    if (!res.ok) return [];
+    const { conversations } = await res.json();
+    return conversations ?? [];
+  } catch {
+    return [];
+  }
 }
 
 function createConversationsStore() {
-  let list = $state<ConversationRecord[]>(load());
+  let list = $state<ConversationRecord[]>([]);
 
-  function save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  // Hydrate from server on store creation
+  fetchConversations().then(records => {
+    list = records;
+  });
+
+  // ── API helpers ──
+
+  async function apiPost(body: object): Promise<void> {
+    try {
+      await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch {}
   }
 
-  function evict() {
-    while (list.length > MAX_CONVERSATIONS) {
-      const idx = list.findLastIndex((c: ConversationRecord) => !c.starred);
-      if (idx === -1) break; // all starred — stop evicting
-      list.splice(idx, 1);
-    }
+  async function apiPatch(sessionId: string, body: object): Promise<void> {
+    try {
+      await fetch(`/api/conversations/${encodeURIComponent(sessionId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch {}
+  }
+
+  async function apiDelete(sessionId: string): Promise<void> {
+    try {
+      await fetch(`/api/conversations/${encodeURIComponent(sessionId)}`, {
+        method: 'DELETE',
+      });
+    } catch {}
   }
 
   return {
@@ -60,9 +83,18 @@ function createConversationsStore() {
         durationMs: null,
       };
 
+      // Optimistic local update
       list.unshift(record);
-      evict();
-      save();
+
+      // Persist to server
+      apiPost({
+        sessionId: record.sessionId,
+        label: record.label,
+        cwd: record.cwd,
+        panelName: record.panelName,
+        startedAt: record.startedAt,
+        endedAt: record.endedAt,
+      });
     },
 
     /** Called from App.svelte on done event — stamps final stats */
@@ -75,27 +107,48 @@ function createConversationsStore() {
     ) {
       const record = list.find((c: ConversationRecord) => c.sessionId === sessionId);
       if (!record) return;
+
+      // Optimistic local update
       record.endedAt = Date.now();
       record.costUsd = costUsd;
       record.messageCount = messageCount;
       record.preview = preview.slice(0, 300);
       record.durationMs = durationMs;
-      save();
+
+      // Persist to server
+      apiPatch(sessionId, {
+        endedAt: record.endedAt,
+        costUsd,
+        messageCount,
+        preview: record.preview,
+        durationMs,
+      });
     },
 
     star(sessionId: string) {
       const r = list.find((c: ConversationRecord) => c.sessionId === sessionId);
-      if (r) { r.starred = true; save(); }
+      if (!r) return;
+      r.starred = true;
+      apiPatch(sessionId, { starred: true });
     },
 
     unstar(sessionId: string) {
       const r = list.find((c: ConversationRecord) => c.sessionId === sessionId);
-      if (r) { r.starred = false; save(); }
+      if (!r) return;
+      r.starred = false;
+      apiPatch(sessionId, { starred: false });
     },
 
     remove(sessionId: string) {
       const idx = list.findIndex((c: ConversationRecord) => c.sessionId === sessionId);
-      if (idx !== -1) { list.splice(idx, 1); save(); }
+      if (idx !== -1) list.splice(idx, 1);
+      apiDelete(sessionId);
+    },
+
+    /** Refresh from server — called after FTS search returns results */
+    async refresh() {
+      const records = await fetchConversations();
+      list = records;
     },
   };
 }

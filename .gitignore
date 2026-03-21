@@ -4,4 +4,25 @@ dist/
 .env.local
 *.log
 .claude/
+.claude-uploads/
 .idea/
+
+# Plan files
+claude_detailed_plans/
+
+# Screenshots and images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.screenshot
+
+# Personal data
+*.pem
+*.key
+*.cert
+*.p12
+credentials.*
+secrets.*
+.env.*
