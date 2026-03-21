@@ -239,7 +239,11 @@
     <TerminalPanel panelId={panel.id} cwd={panel.cwd} />
   {:else}
     <PanelOutput messages={panel.messages} status={panel.status} />
-    <AgentMonitor agents={panel.agentDetails} visible={showAgentMonitor || panel.agentDetails.length > 0} />
+    <AgentMonitor
+      agents={panel.agentDetails}
+      visible={showAgentMonitor || panel.status === 'running' || panel.agentDetails.some(a => a.status === 'running')}
+      panelRunning={panel.status === 'running'}
+    />
 
     {#if showSessionPicker}
       <div class="session-picker">
