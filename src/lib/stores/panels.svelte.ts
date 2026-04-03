@@ -429,6 +429,17 @@ function resumeConversation(panelId: number, cwd: string, sessionId: string) {
   ws.send({ type: 'prompt', panelId, cwd: panel.cwd, prompt: 'Continue where we left off.', resume: sessionId, model: panel.model, effort: panel.effort });
 }
 
+// ── Reorder (drag-to-reorder) ──
+
+function reorderPanel(panelId: number, targetPanelId: number) {
+  const fromIdx = panels.findIndex(p => p.id === panelId);
+  const toIdx = panels.findIndex(p => p.id === targetPanelId);
+  if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+  const [moved] = panels.splice(fromIdx, 1);
+  panels.splice(toIdx, 0, moved);
+  savePanelConfigs();
+}
+
 // ── Group movement ──
 
 function movePanel(panelId: number, targetGroup: string) {
@@ -476,6 +487,7 @@ export const panelStore = {
   getSessions,
   resumeConversation,
   movePanel,
+  reorderPanel,
   toggleLayout,
   nextMsgId,
   createGroup,

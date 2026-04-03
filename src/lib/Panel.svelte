@@ -50,6 +50,40 @@
   let showSessionPicker = $state(false);
   let sessions = $state<SessionRecord[]>([]);
 
+  // Drag-to-reorder state
+  let isDragging = $state(false);
+  let isDragOver = $state(false);
+
+  function handleDragStart(e: DragEvent) {
+    if (!e.dataTransfer) return;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(panel.id));
+    isDragging = true;
+  }
+
+  function handleDragEnd() {
+    isDragging = false;
+  }
+
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    isDragOver = true;
+  }
+
+  function handleDragLeave() {
+    isDragOver = false;
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    isDragOver = false;
+    if (!e.dataTransfer) return;
+    const fromId = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (isNaN(fromId) || fromId === panel.id) return;
+    panelStore.reorderPanel(fromId, panel.id);
+  }
+
   function handleFolderSelect(path: string) {
     panelStore.updateCwd(panel.id, path);
     showFolderPicker = false;
@@ -307,9 +341,23 @@
   });
 </script>
 
-<div class="panel {flashClass}" data-panel-id={panel.id} onfocusin={() => panelStore.setFocusedPanel(panel.id)}>
+<div
+  class="panel {flashClass}"
+  class:dragging={isDragging}
+  class:drag-over={isDragOver}
+  data-panel-id={panel.id}
+  onfocusin={() => panelStore.setFocusedPanel(panel.id)}
+  ondragover={handleDragOver}
+  ondragleave={handleDragLeave}
+  ondrop={handleDrop}
+>
   <!-- Compact title bar -->
-  <div class="panel-titlebar">
+  <div
+    class="panel-titlebar"
+    draggable="true"
+    ondragstart={handleDragStart}
+    ondragend={handleDragEnd}
+  >
     <div class="titlebar-left">
       <span class="status-dot" style="background: {statusColor}" class:pulse={panel.status === 'running'}></span>
       <input
@@ -516,8 +564,21 @@
     border: 1px solid var(--outline-dim);
   }
 
+  /* ---- Drag-to-reorder ---- */
+  .panel.dragging {
+    opacity: 0.5;
+  }
+  .panel.drag-over {
+    border-color: var(--accent);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  .panel.dragging .panel-titlebar {
+    cursor: grabbing;
+  }
+
   /* ---- Title bar ---- */
   .panel-titlebar {
+    cursor: grab;
     display: flex;
     align-items: center;
     justify-content: space-between;
