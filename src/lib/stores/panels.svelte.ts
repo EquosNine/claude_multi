@@ -227,6 +227,13 @@ function setStatus(panelId: number, status: PanelState['status']) {
   if (!panel) return;
   panel.status = status;
   if (status === 'running') panel.startTime = Date.now();
+  // When session finishes, force-complete any agents still marked as running
+  // (the v2 SDK may not emit tool_result events for Agent tools it handles internally)
+  if (status === 'idle') {
+    for (const agent of panel.agentDetails) {
+      if (agent.status === 'running') agent.status = 'done';
+    }
+  }
 }
 
 function updateName(panelId: number, name: string) {

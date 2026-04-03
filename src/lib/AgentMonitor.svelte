@@ -9,10 +9,13 @@
     onClose?: () => void;
   } = $props();
 
-  let expandedId = $state<string | null>(null);
+  let collapsedIds = $state(new Set<string>());
 
-  function toggleExpand(id: string) {
-    expandedId = expandedId === id ? null : id;
+  function toggleCollapse(id: string) {
+    const next = new Set(collapsedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    collapsedIds = next;
   }
 
   let runningAgents = $derived(agents.filter(a => a.status === 'running'));
@@ -34,10 +37,8 @@
       <span class="am-title">
         {#if runningAgents.length > 0}
           <span class="pulse-dot"></span>
-          Sub-Agents
-        {:else}
-          Sub-Agents
         {/if}
+        Sub-Agents
       </span>
       <span class="am-count">
         {#if runningAgents.length > 0}
@@ -60,37 +61,44 @@
       {/if}
     {:else}
       <div class="am-list">
-        <!-- Running agents first -->
+        <!-- Running agents: expanded by default, click to collapse -->
         {#each runningAgents as agent (agent.toolUseId)}
           {@const elapsed = formatTime(Date.now() - agent.startTime)}
-          <button class="am-item running" onclick={() => toggleExpand(agent.toolUseId)}>
-            <div class="am-item-header">
+          {@const isCollapsed = collapsedIds.has(agent.toolUseId)}
+          <div class="am-item running">
+            <button class="am-item-header" onclick={() => toggleCollapse(agent.toolUseId)}>
               <span class="am-dot running"></span>
               <span class="am-desc">{agent.description || 'Agent'}</span>
               {#if agent.lastToolName}
                 <span class="am-tool-badge">{agent.lastToolName}</span>
               {/if}
               <span class="am-time active">{elapsed}</span>
-              <span class="am-expand">{expandedId === agent.toolUseId ? '▾' : '▸'}</span>
-            </div>
-            {#if agent.progressSummary}
-              <div class="am-progress">{agent.progressSummary}</div>
+              <span class="am-expand">{isCollapsed ? '▸' : '▾'}</span>
+            </button>
+            {#if !isCollapsed}
+              {#if agent.progressSummary}
+                <div class="am-progress">{agent.progressSummary}</div>
+              {/if}
+              {#if agent.output}
+                <div class="am-output">{agent.output}</div>
+              {/if}
+              {#if !agent.progressSummary && !agent.output}
+                <div class="am-progress am-progress-waiting">Working…</div>
+              {/if}
             {/if}
-            {#if expandedId === agent.toolUseId && agent.output}
-              <div class="am-output">{agent.output}</div>
-            {/if}
-          </button>
+          </div>
         {/each}
-        <!-- Done agents below -->
+        <!-- Done agents: collapsed by default, click to expand -->
         {#each doneAgents as agent (agent.toolUseId)}
-          <button class="am-item done" onclick={() => toggleExpand(agent.toolUseId)}>
-            <div class="am-item-header">
-              <span class="am-dot"></span>
+          {@const isCollapsed = !collapsedIds.has(agent.toolUseId)}
+          <div class="am-item done">
+            <button class="am-item-header" onclick={() => toggleCollapse(agent.toolUseId)}>
+              <span class="am-dot done-dot"></span>
               <span class="am-desc">{agent.description || 'Agent'}</span>
               <span class="am-time">done</span>
-              <span class="am-expand">{expandedId === agent.toolUseId ? '▾' : '▸'}</span>
-            </div>
-            {#if expandedId === agent.toolUseId}
+              <span class="am-expand">{isCollapsed ? '▸' : '▾'}</span>
+            </button>
+            {#if !isCollapsed}
               {#if agent.progressSummary}
                 <div class="am-progress">{agent.progressSummary}</div>
               {/if}
@@ -98,7 +106,7 @@
                 <div class="am-output">{agent.output}</div>
               {/if}
             {/if}
-          </button>
+          </div>
         {/each}
       </div>
     {/if}
@@ -110,12 +118,13 @@
     border-top: 1px solid var(--outline-dim);
     background: rgba(26, 26, 53, 0.5);
     flex-shrink: 0;
-    max-height: 200px;
+    max-height: 180px;
     overflow-y: auto;
-    transition: border-color 0.3s;
+    transition: border-color 0.3s, max-height 0.3s;
   }
   .agent-monitor.has-running {
     border-top-color: rgba(109, 254, 156, 0.3);
+    max-height: 320px;
   }
   .agent-monitor::-webkit-scrollbar { width: 5px; }
   .agent-monitor::-webkit-scrollbar-thumb { background: var(--outline-dim); border-radius: 3px; }
@@ -126,6 +135,10 @@
     justify-content: space-between;
     padding: 4px 10px;
     border-bottom: 1px solid var(--outline-dim);
+    position: sticky;
+    top: 0;
+    background: rgba(26, 26, 53, 0.95);
+    z-index: 1;
   }
   .am-title {
     display: flex;
@@ -168,12 +181,7 @@
 
   .am-item {
     width: 100%;
-    background: none;
-    border: none;
     color: var(--text);
-    padding: 0;
-    cursor: pointer;
-    text-align: left;
   }
   .am-item:hover { background: rgba(124, 58, 237, 0.06); }
   .am-item.done { opacity: 0.45; }
@@ -185,7 +193,15 @@
     gap: 6px;
     padding: 3px 10px;
     font-size: 1.1rem;
+    width: 100%;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
   }
+  .am-item-header:hover { background: rgba(124, 58, 237, 0.08); }
+
   .am-dot {
     width: 6px;
     height: 6px;
@@ -196,6 +212,9 @@
   .am-dot.running {
     background: var(--green);
     animation: pulse 1.5s ease-in-out infinite;
+  }
+  .am-dot.done-dot {
+    background: var(--text-dim);
   }
   .am-desc {
     flex: 1;
@@ -224,9 +243,11 @@
     font-family: 'Fira Code', monospace;
     color: var(--green);
     font-style: italic;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .am-progress-waiting {
+    color: var(--text-dim);
   }
   .am-tool-badge {
     font-family: 'Fira Code', monospace;
@@ -244,7 +265,7 @@
     color: var(--text-dim);
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 80px;
+    max-height: 120px;
     overflow-y: auto;
     border-top: 1px dashed var(--outline-dim);
   }

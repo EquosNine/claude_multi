@@ -63,8 +63,8 @@ export function handleEvent(panelId: number, event: any) {
     for (const block of event.message.content) {
       if (block.type === "tool_result" && block.tool_use_id) {
         const output = typeof block.content === "string"
-          ? block.content.slice(0, 500)
-          : JSON.stringify(block.content).slice(0, 500);
+          ? block.content.slice(0, 2000)
+          : JSON.stringify(block.content).slice(0, 2000);
         broadcast({
           type: "agent_detail",
           panelId,

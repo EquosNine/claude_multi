@@ -87,9 +87,17 @@ export function createSession(panelId: number, cwd: string, model: string, effor
     options.resumeSessionAt = opts.resumeAt;
   }
 
+  // WORKAROUND: The v2 SDK's SDKSessionOptions does not forward `cwd` to the
+  // spawned CLI process — it always inherits process.cwd(). Temporarily chdir
+  // so the synchronous spawn in the constructor picks up the correct directory.
+  const originalCwd = process.cwd();
+  try { process.chdir(cwd); } catch {}
+
   const sdk = opts.resume
     ? unstable_v2_resumeSession(opts.resume, options)
     : unstable_v2_createSession(options);
+
+  try { process.chdir(originalCwd); } catch {}
 
   const session: PanelSession = {
     sdk,
