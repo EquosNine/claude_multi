@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>claude-multi</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Startup splash – visible immediately, dismissed once app is ready -->
+  <div id="splash">
+    <div class="splash-inner">
+      <div class="splash-logo">claude-multi</div>
+      <div class="splash-steps">
+        <div class="splash-step active" id="splash-step-assets">
+          <span class="splash-dot"></span> Loading assets…
+        </div>
+        <div class="splash-step" id="splash-step-connect">
+          <span class="splash-dot"></span> Connecting to server…
+        </div>
+        <div class="splash-step" id="splash-step-ready">
+          <span class="splash-dot"></span> Ready
+        </div>
+      </div>
+      <div class="splash-bar-track">
+        <div class="splash-bar-fill" id="splash-bar"></div>
+      </div>
+    </div>
+  </div>
+  <style>
+    #splash {
+      position: fixed; inset: 0; z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+      background: #060e20;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+    }
+    #splash.fade-out { opacity: 0; visibility: hidden; }
+    .splash-inner { text-align: center; width: 320px; }
+    .splash-logo {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 28px; font-weight: 700; letter-spacing: 1px;
+      color: #cc97ff; margin-bottom: 32px;
+    }
+    .splash-steps { text-align: left; margin-bottom: 24px; }
+    .splash-step {
+      font-family: 'Fira Code', monospace;
+      font-size: 13px; color: #6d758c;
+      padding: 6px 0; display: flex; align-items: center; gap: 10px;
+      transition: color 0.3s;
+    }
+    .splash-step.active { color: #dee5ff; }
+    .splash-step.done { color: #6dfe9c; }
+    .splash-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #6d758c; flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .splash-step.active .splash-dot { background: #cc97ff; animation: dot-pulse 1s infinite; }
+    .splash-step.done .splash-dot { background: #6dfe9c; animation: none; }
+    @keyframes dot-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .splash-bar-track {
+      width: 100%; height: 3px; background: rgba(109,117,140,0.25);
+      border-radius: 2px; overflow: hidden;
+    }
+    .splash-bar-fill {
+      height: 100%; width: 0%; background: #cc97ff;
+      border-radius: 2px; transition: width 0.4s ease;
+    }
+  </style>
+
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

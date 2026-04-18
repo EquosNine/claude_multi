@@ -1,0 +1,915 @@
+<script lang="ts">
+  import type { PanelState, SessionRecord } from './types';
+  import { panelStore } from './stores/panels.svelte';
+  import { conversationStore } from './stores/conversations.svelte';
+  import { ws } from './stores/ws.svelte';
+  import { formatTime } from './utils';
+  import { copyPanelOutput, downloadPanelOutput } from './export';
+  import PanelOutput from './PanelOutput.svelte';
+  import PanelInput from './PanelInput.svelte';
+  import FolderPicker from './FolderPicker.svelte';
+  import AgentMonitor from './AgentMonitor.svelte';
+  import TerminalPanel from './TerminalPanel.svelte';
+  import { validateCwd } from './api';
+  import { settingsStore } from './stores/settings.svelte';
+  import type { ModelId, EffortLevel } from './types';
+
+  let { panel }: { panel: PanelState } = $props();
+
+  const MODELS: { id: ModelId; label: string }[] = [
+    { id: 'claude-haiku-4-5-20251001', label: 'H' },
+    { id: 'claude-sonnet-4-6',         label: 'S' },
+    { id: 'claude-opus-4-6',           label: 'O' },
+  ];
+
+  const EFFORTS: { id: EffortLevel; label: string }[] = [
+    { id: 'low',    label: 'Lo' },
+    { id: 'medium', label: 'Md' },
+    { id: 'high',   label: 'Hi' },
+    { id: 'max',    label: 'Mx' },
+  ];
+
+  let showModelPicker = $state(false);
+
+  let cwdValid = $state<boolean | null>(null); // null = unchecked
+
+  let flashClass = $state('');
+  let prevStatus = $state<string>('idle');
+
+  $effect(() => {
+    const current = panel.status;
+    if (prevStatus === 'running' && current !== 'running') {
+      flashClass = current === 'error' ? 'flash-error' : 'flash-done';
+      setTimeout(() => { flashClass = ''; }, 2000);
+    }
+    prevStatus = current;
+  });
+
+  let showFolderPicker = $state(false);
+  let showAgentMonitor = $state(false);
+  let showSessionPicker = $state(false);
+  let sessions = $state<SessionRecord[]>([]);
+
+  // Drag-to-reorder state
+  let isDragging = $state(false);
+  let isDragOver = $state(false);
+
+  function handleDragStart(e: DragEvent) {
+    if (!e.dataTransfer) return;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(panel.id));
+    isDragging = true;
+  }
+
+  function handleDragEnd() {
+    isDragging = false;
+  }
+
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    isDragOver = true;
+  }
+
+  function handleDragLeave() {
+    isDragOver = false;
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    isDragOver = false;
+    if (!e.dataTransfer) return;
+    const fromId = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (isNaN(fromId) || fromId === panel.id) return;
+    panelStore.reorderPanel(fromId, panel.id);
+  }
+
+  function handleFolderSelect(path: string) {
+    panelStore.updateCwd(panel.id, path);
+    showFolderPicker = false;
+    cwdValid = true; // folder picker only returns valid dirs
+  }
+
+  let timerText = $state('--:--');
+  let timerInterval: ReturnType<typeof setInterval> | null = null;
+
+  $effect(() => {
+    if (panel.status === 'running' && panel.startTime) {
+      timerText = '00:00';
+      timerInterval = setInterval(() => {
+        timerText = formatTime(Date.now() - panel.startTime!);
+      }, 1000);
+    } else {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+      // Show actual Claude duration from SDK result event when idle
+      if (panel.lastTurnDurationMs !== null) {
+        timerText = formatTime(panel.lastTurnDurationMs);
+      }
+    }
+    return () => {
+      if (timerInterval) clearInterval(timerInterval);
+    };
+  });
+
+  function handleNameChange(e: Event) {
+    panelStore.updateName(panel.id, (e.target as HTMLInputElement).value);
+  }
+
+  async function handleCwdChange(e: Event) {
+    const path = (e.target as HTMLInputElement).value;
+    panelStore.updateCwd(panel.id, path);
+    cwdValid = null;
+    cwdValid = await validateCwd(path);
+  }
+
+  function handleClose() {
+    panelStore.removePanel(panel.id);
+  }
+
+  function handleSend(prompt: string, resume?: string) {
+    if (!prompt.trim()) return;
+    if (!panel.cwd.trim()) {
+      panelStore.addMessage(panel.id, {
+        id: panelStore.nextMsgId(),
+        type: 'system',
+        text: 'Set a project directory first.',
+      });
+      return;
+    }
+
+    // Check for branch info from localStorage (set by branchFromMessage)
+    const branchKey = `panel-branch-${panel.id}`;
+    const branchRaw = localStorage.getItem(branchKey);
+    if (branchRaw && !resume) {
+      const branch = JSON.parse(branchRaw);
+      localStorage.removeItem(branchKey);
+      panelStore.addMessage(panel.id, {
+        id: panelStore.nextMsgId(),
+        type: 'system',
+        text: panel.status === 'running' ? `> ${prompt} [queued]` : `> ${prompt}`,
+      });
+      panelStore.clearSuggestions(panel.id);
+      ws.send({
+        type: 'prompt', panelId: panel.id, cwd: panel.cwd, prompt,
+        resume: branch.sessionId, resumeAt: branch.resumeAt,
+        model: panel.model, effort: panel.effort,
+        ...buildExtras(),
+      });
+      return;
+    }
+
+    if (!resume) {
+      conversationStore.setPending(
+        panel.id,
+        prompt,
+        panel.cwd,
+        panel.name || `Panel ${panel.id + 1}`,
+      );
+    }
+    panelStore.addMessage(panel.id, {
+      id: panelStore.nextMsgId(),
+      type: 'system',
+      text: panel.status === 'running' ? `> ${prompt} [queued]` : `> ${prompt}`,
+    });
+    panelStore.clearSuggestions(panel.id);
+    ws.send({
+      type: 'prompt', panelId: panel.id, cwd: panel.cwd, prompt,
+      model: panel.model, effort: panel.effort,
+      ...(resume ? { resume } : {}),
+      ...buildExtras(),
+    });
+  }
+
+  function buildExtras(): Record<string, any> {
+    const extras: Record<string, any> = {};
+
+    // MCP servers
+    const mcpRecord: Record<string, any> = {};
+    for (const name of panel.mcpServers) {
+      const config = settingsStore.mcpServers.find((m: any) => m.name === name);
+      if (config && config.enabled) {
+        mcpRecord[name] = { command: config.command, args: config.args, env: config.env };
+      }
+    }
+    if (Object.keys(mcpRecord).length > 0) extras.mcpServers = mcpRecord;
+
+    // Structured output
+    if (panel.structuredOutputEnabled && panel.structuredOutputSchema) {
+      try {
+        extras.outputFormat = { type: 'json_schema', schema: JSON.parse(panel.structuredOutputSchema) };
+      } catch {}
+    }
+
+    return extras;
+  }
+
+  function handleBranch(uuid: string) {
+    const branchInfo = panelStore.branchFromMessage(panel.id, uuid);
+    if (!branchInfo) return;
+    const newPanel = panelStore.createPanel('claude');
+    if (!newPanel) return;
+    panelStore.updateCwd(newPanel.id, branchInfo.cwd);
+    panelStore.updateModel(newPanel.id, branchInfo.model);
+    panelStore.updateEffort(newPanel.id, branchInfo.effort);
+    panelStore.updateName(newPanel.id, `${branchInfo.name || 'Panel'} [branch]`);
+    panelStore.addMessage(newPanel.id, {
+      id: panelStore.nextMsgId(),
+      type: 'system',
+      text: `Branched from ${branchInfo.sessionId.slice(0, 12)}... — send a prompt to continue from that point.`,
+    });
+    localStorage.setItem(`panel-branch-${newPanel.id}`, JSON.stringify({
+      sessionId: branchInfo.sessionId,
+      resumeAt: branchInfo.resumeAt,
+    }));
+  }
+
+  function toggleMcp(name: string) {
+    const current = [...panel.mcpServers];
+    const idx = current.indexOf(name);
+    if (idx >= 0) current.splice(idx, 1);
+    else current.push(name);
+    panelStore.updateMcpServers(panel.id, current);
+  }
+
+  function saveSchema() {
+    panelStore.setStructuredOutput(panel.id, panel.structuredOutputEnabled, schemaText);
+    showSchemaEditor = false;
+  }
+
+  function handleQuestionAnswer(questionId: string, answer: string) {
+    ws.send({ type: 'question_response', panelId: panel.id, questionId, answer });
+  }
+
+  function handleStop() {
+    ws.send({ type: 'cancel', panelId: panel.id });
+  }
+
+  function openSessionPicker() {
+    sessions = panelStore.getSessions(panel.id);
+    if (sessions.length === 0) {
+      panelStore.addMessage(panel.id, {
+        id: panelStore.nextMsgId(),
+        type: 'system',
+        text: 'No previous sessions found for this panel.',
+      });
+      return;
+    }
+    showSessionPicker = true;
+  }
+
+  function resumeSession(session: SessionRecord) {
+    showSessionPicker = false;
+    handleSend('Continue where we left off.', session.id);
+  }
+
+  let showMoveMenu = $state(false);
+  let showSchemaEditor = $state(false);
+  let schemaText = $state(panel.structuredOutputSchema || '');
+  let otherTabs = $derived(panelStore.tabGroups.filter(g => g !== panel.group));
+
+  function moveToTab(group: string) {
+    showMoveMenu = false;
+    panelStore.movePanel(panel.id, group);
+  }
+
+  $effect(() => {
+    if (!showMoveMenu && !showModelPicker) return;
+    function onOutside(e: MouseEvent) {
+      const target = e.target as Element;
+      if (showMoveMenu && !target.closest('.move-wrap')) showMoveMenu = false;
+      if (showModelPicker && !target.closest('.model-picker-wrap')) showModelPicker = false;
+    }
+    window.addEventListener('mousedown', onOutside);
+    return () => window.removeEventListener('mousedown', onOutside);
+  });
+
+  let copyFeedback = $state('');
+
+  async function handleCopy() {
+    const ok = await copyPanelOutput(panel.messages);
+    copyFeedback = ok ? 'Copied!' : 'Failed';
+    setTimeout(() => { copyFeedback = ''; }, 1500);
+  }
+
+  function handleExport() {
+    downloadPanelOutput(panel.messages, panel.name || `Panel ${panel.id + 1}`);
+  }
+
+  let activeAgentCount = $derived(panel.agentDetails.filter(a => a.status === 'running').length);
+  let agentsText = $derived(
+    activeAgentCount > 0 ? `${activeAgentCount} agent${activeAgentCount > 1 ? 's' : ''}` : ''
+  );
+
+  function formatTokenCount(n: number): string {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k';
+    return String(n);
+  }
+
+  let costText = $derived(
+    panel.costUsd > 0
+      ? panel.costUsd < 0.01
+        ? `$${(panel.costUsd * 100).toFixed(1)}c`
+        : `$${panel.costUsd.toFixed(3)}`
+      : ''
+  );
+
+  let tokensText = $derived(
+    (panel.inputTokens + panel.outputTokens) > 0
+      ? `${formatTokenCount(panel.inputTokens + panel.outputTokens)} tok`
+      : ''
+  );
+
+  let cacheText = $derived(
+    panel.cacheReadTokens > 0
+      ? `${formatTokenCount(panel.cacheReadTokens)} cached`
+      : ''
+  );
+
+  let modelShort = $derived(MODELS.find(m => m.id === panel.model)?.label ?? 'S');
+  let effortShort = $derived(EFFORTS.find(e => e.id === panel.effort)?.label ?? 'Hi');
+
+  let statusColor = $derived.by(() => {
+    switch (panel.status) {
+      case 'running': return 'var(--green)';
+      case 'error': return 'var(--red)';
+      default: return 'var(--text-dim)';
+    }
+  });
+</script>
+
+<div
+  class="panel {flashClass}"
+  class:dragging={isDragging}
+  class:drag-over={isDragOver}
+  data-panel-id={panel.id}
+  onfocusin={() => panelStore.setFocusedPanel(panel.id)}
+  ondragover={handleDragOver}
+  ondragleave={handleDragLeave}
+  ondrop={handleDrop}
+>
+  <!-- Compact title bar -->
+  <div
+    class="panel-titlebar"
+    draggable="true"
+    ondragstart={handleDragStart}
+    ondragend={handleDragEnd}
+  >
+    <div class="titlebar-left">
+      <span class="status-dot" style="background: {statusColor}" class:pulse={panel.status === 'running'}></span>
+      <input
+        type="text"
+        class="panel-name"
+        placeholder="UNTITLED"
+        spellcheck="false"
+        maxlength={30}
+        value={panel.name}
+        onchange={handleNameChange}
+      />
+      {#if panel.panelType !== 'terminal'}
+        <div class="model-picker-wrap">
+          <button class="model-tag" onclick={() => showModelPicker = !showModelPicker} title="Model / Reasoning">
+            {modelShort}<span class="model-tag-sep">/</span>{effortShort}
+          </button>
+          {#if showModelPicker}
+            <div class="model-picker-popover">
+              <div class="mp-row">
+                <span class="mp-label">Model</span>
+                <div class="mp-btns">
+                  {#each MODELS as m}
+                    <button
+                      class="mp-btn"
+                      class:active={panel.model === m.id}
+                      onclick={() => panelStore.updateModel(panel.id, m.id)}
+                    >{m.label}</button>
+                  {/each}
+                </div>
+              </div>
+              <div class="mp-row">
+                <span class="mp-label">Reasoning</span>
+                <div class="mp-btns">
+                  {#each EFFORTS as e}
+                    <button
+                      class="mp-btn"
+                      class:active={panel.effort === e.id}
+                      onclick={() => panelStore.updateEffort(panel.id, e.id)}
+                    >{e.label}</button>
+                  {/each}
+                </div>
+              </div>
+              {#if settingsStore.mcpServers.length > 0}
+                <div class="mp-row">
+                  <span class="mp-label">MCP</span>
+                  <div class="mp-btns mp-btns-wrap">
+                    {#each settingsStore.mcpServers as server}
+                      <button
+                        class="mp-btn"
+                        class:active={panel.mcpServers.includes(server.name)}
+                        onclick={() => toggleMcp(server.name)}
+                      >{server.name}</button>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
+              <div class="mp-row">
+                <span class="mp-label">JSON</span>
+                <div class="mp-btns">
+                  <button
+                    class="mp-btn"
+                    class:active={panel.structuredOutputEnabled}
+                    onclick={() => panelStore.setStructuredOutput(panel.id, !panel.structuredOutputEnabled, panel.structuredOutputSchema)}
+                  >{panel.structuredOutputEnabled ? 'ON' : 'OFF'}</button>
+                  {#if panel.structuredOutputEnabled}
+                    <button class="mp-btn" onclick={() => { schemaText = panel.structuredOutputSchema; showSchemaEditor = true; }}>Schema</button>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </div>
+    <div class="titlebar-right">
+      {#if panel.panelType !== 'terminal'}
+        {#if agentsText || panel.agentDetails.length > 0}
+          <button class="badge agents" class:pulsing={activeAgentCount > 0} onclick={() => showAgentMonitor = !showAgentMonitor}>
+            {agentsText || `${panel.agentDetails.length} agents`}
+          </button>
+        {/if}
+        {#if costText}
+          <span class="badge cost">{costText}</span>
+        {/if}
+        {#if tokensText}
+          <span class="badge tokens">{tokensText}</span>
+        {/if}
+        {#if cacheText}
+          <span class="badge cache" title="Cache-read tokens (billed at ~10%)">{cacheText}</span>
+        {/if}
+        <span class="timer" class:active={panel.status === 'running'}>{timerText}</span>
+        <button class="action-btn" title="Copy output" onclick={handleCopy}>
+          {copyFeedback || 'CP'}
+        </button>
+        <button class="action-btn" title="Download .md" onclick={handleExport}>DL</button>
+      {/if}
+      {#if otherTabs.length > 0}
+        <div class="move-wrap">
+          <button class="action-btn" title="Move to tab" onclick={() => showMoveMenu = !showMoveMenu}>MV</button>
+          {#if showMoveMenu}
+            <div class="move-menu">
+              {#each otherTabs as tab}
+                <button class="move-item" onclick={() => moveToTab(tab)}>{tab}</button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
+      <button class="close-btn" title="Remove panel" onclick={handleClose}>&times;</button>
+    </div>
+  </div>
+
+  <!-- CWD bar -->
+  <div class="cwd-bar">
+    <input
+      type="text"
+      class="cwd-input"
+      class:cwd-invalid={cwdValid === false}
+      class:cwd-ok={cwdValid === true}
+      placeholder="Working directory..."
+      spellcheck="false"
+      value={panel.cwd}
+      onchange={handleCwdChange}
+    />
+    <button class="cwd-browse" title="Browse folders" onclick={() => showFolderPicker = !showFolderPicker}>
+      ...
+    </button>
+    {#if showFolderPicker}
+      <FolderPicker
+        currentPath={panel.cwd}
+        onSelect={handleFolderSelect}
+        onClose={() => showFolderPicker = false}
+      />
+    {/if}
+  </div>
+
+  <!-- Content -->
+  {#if panel.panelType === 'terminal'}
+    <TerminalPanel panelId={panel.id} cwd={panel.cwd} />
+  {:else}
+    <PanelOutput
+      messages={panel.messages}
+      status={panel.status}
+      suggestions={panel.suggestions}
+      onSuggestionClick={(s) => handleSend(s)}
+      onBranch={handleBranch}
+      onQuestionAnswer={handleQuestionAnswer}
+    />
+    <AgentMonitor
+      agents={panel.agentDetails}
+      visible={showAgentMonitor || panel.status === 'running' || panel.agentDetails.some(a => a.status === 'running')}
+      panelRunning={panel.status === 'running'}
+    />
+
+    {#if showSessionPicker}
+      <div class="session-picker">
+        <div class="sp-header">
+          <span class="sp-title">Resume Session</span>
+          <button class="sp-close" onclick={() => showSessionPicker = false}>&times;</button>
+        </div>
+        <div class="sp-list">
+          {#each sessions as session}
+            <button class="sp-item" onclick={() => resumeSession(session)}>
+              <span class="sp-id">{session.id.slice(0, 12)}...</span>
+              <span class="sp-label">{session.label}</span>
+              <span class="sp-time">{new Date(session.timestamp).toLocaleString()}</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
+    {#if showSchemaEditor}
+      <div class="schema-editor">
+        <div class="sp-header">
+          <span class="sp-title">JSON Schema</span>
+          <button class="sp-close" onclick={() => showSchemaEditor = false}>&times;</button>
+        </div>
+        <textarea
+          class="schema-textarea"
+          bind:value={schemaText}
+          placeholder="Paste JSON schema here..."
+          rows={6}
+        ></textarea>
+        <div class="schema-actions">
+          <button class="mp-btn active" onclick={saveSchema}>Save</button>
+        </div>
+      </div>
+    {/if}
+
+    <PanelInput status={panel.status} onSend={handleSend} onStop={handleStop} panelId={panel.id} cwd={panel.cwd} onResume={openSessionPicker} />
+  {/if}
+</div>
+
+<style>
+  .panel {
+    display: flex;
+    flex-direction: column;
+    background: var(--panel-bg);
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--outline-dim);
+  }
+
+  /* ---- Drag-to-reorder ---- */
+  .panel.dragging {
+    opacity: 0.5;
+  }
+  .panel.drag-over {
+    border-color: var(--accent);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  .panel.dragging .panel-titlebar {
+    cursor: grabbing;
+  }
+
+  /* ---- Title bar ---- */
+  .panel-titlebar {
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 32px;
+    padding: 0 10px;
+    background: var(--surface-low);
+    border-bottom: 1px solid var(--outline-dim);
+    flex-shrink: 0;
+  }
+  .titlebar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .status-dot.pulse {
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  .panel-name {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: 'Fira Code', monospace;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 0;
+    outline: none;
+    min-width: 0;
+    max-width: 200px;
+    cursor: text;
+  }
+  .panel-name::placeholder { color: var(--text-dim); font-weight: 400; }
+  .panel-name:focus { color: var(--accent); }
+  .titlebar-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .panel:hover .titlebar-right,
+  .panel:focus-within .titlebar-right {
+    opacity: 1;
+  }
+  .badge {
+    font-family: 'Fira Code', monospace;
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    background: var(--surface-mid);
+    padding: 1px 5px;
+    border-radius: var(--radius);
+    white-space: nowrap;
+    border: none;
+  }
+  .badge.agents { color: var(--blue); cursor: pointer; }
+  .badge.agents:hover { opacity: 0.8; }
+  .badge.cost { color: var(--green); }
+  .badge.tokens { color: var(--text-dim); }
+  .badge.cache { color: var(--accent); }
+  .timer {
+    font-family: 'Fira Code', monospace;
+    font-size: 1rem;
+    color: var(--text-dim);
+    min-width: 36px;
+    text-align: center;
+  }
+  .timer.active { color: var(--green); }
+  .action-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.9rem;
+    padding: 0 2px;
+    text-transform: uppercase;
+    transition: color 0.15s;
+  }
+  .action-btn:hover { color: var(--accent); }
+  .close-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 1.4rem;
+    padding: 0 2px;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .close-btn:hover { color: var(--red); }
+
+  /* ---- Move to tab ---- */
+  .move-wrap {
+    position: relative;
+  }
+  .move-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: var(--surface-high);
+    border: 1px solid var(--outline-dim);
+    border-radius: var(--radius);
+    z-index: 100;
+    min-width: 100px;
+    padding: 2px 0;
+  }
+  .move-item {
+    display: block;
+    width: 100%;
+    padding: 5px 10px;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-family: 'Fira Code', monospace;
+    font-size: 0.9rem;
+    text-align: left;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .move-item:hover { background: rgba(204, 151, 255, 0.1); color: var(--accent); }
+
+  /* ---- Model picker ---- */
+  .model-picker-wrap { position: relative; display: flex; align-items: center; }
+  .model-tag {
+    background: rgba(204, 151, 255, 0.08);
+    border: 1px solid var(--outline-dim);
+    border-radius: var(--radius);
+    color: var(--accent);
+    font-family: 'Fira Code', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 1px 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .model-tag:hover { border-color: var(--accent); background: rgba(204, 151, 255, 0.15); }
+  .model-tag-sep { color: var(--text-dim); margin: 0 1px; }
+  .model-picker-popover {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: var(--surface-low);
+    border: 1px solid var(--outline-dim);
+    border-radius: var(--radius-lg);
+    padding: 8px 10px;
+    min-width: 180px;
+    z-index: 100;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .mp-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mp-label {
+    font-size: 0.85rem;
+    font-family: 'Fira Code', monospace;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    min-width: 44px;
+  }
+  .mp-btns { display: flex; gap: 3px; }
+  .mp-btns-wrap { flex-wrap: wrap; }
+  .mp-btn {
+    padding: 2px 6px;
+    border: 1px solid var(--outline-dim);
+    background: var(--surface-mid);
+    color: var(--text-dim);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: 'Fira Code', monospace;
+    transition: all 0.12s;
+  }
+  .mp-btn:hover { border-color: var(--accent); color: var(--text); }
+  .mp-btn.active {
+    border-color: var(--accent);
+    background: rgba(204, 151, 255, 0.12);
+    color: var(--accent);
+  }
+
+  /* ---- CWD bar ---- */
+  .cwd-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 0 10px;
+    height: 26px;
+    background: var(--surface-low);
+    border-bottom: 1px solid var(--outline-dim);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .cwd-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-family: 'Fira Code', monospace;
+    font-size: 1rem;
+    padding: 0;
+    outline: none;
+    min-width: 0;
+  }
+  .cwd-input:focus { color: var(--text); }
+  .cwd-input::placeholder { color: var(--outline); }
+  .cwd-input.cwd-invalid { color: var(--red); }
+  .cwd-input.cwd-ok { color: var(--green); }
+  .cwd-browse {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: 'Fira Code', monospace;
+    font-size: 1rem;
+    padding: 2px 4px;
+    transition: color 0.15s;
+    flex-shrink: 0;
+  }
+  .cwd-browse:hover { color: var(--accent); }
+
+  /* ---- Session picker ---- */
+  .session-picker {
+    border-top: 1px solid var(--outline-dim);
+    background: var(--surface-high);
+    flex-shrink: 0;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .sp-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--outline-dim);
+  }
+  .sp-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--accent);
+  }
+  .sp-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 1.6rem;
+    padding: 0 4px;
+    line-height: 1;
+  }
+  .sp-close:hover { color: var(--red); }
+  .sp-list { padding: 2px 0; }
+  .sp-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 6px 10px;
+    background: none;
+    border: none;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 1.2rem;
+    text-align: left;
+  }
+  .sp-item:hover { background: rgba(204, 151, 255, 0.08); }
+  .sp-id {
+    font-family: 'Fira Code', monospace;
+    font-size: 0.9rem;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  .sp-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sp-time {
+    font-size: 1rem;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+  /* ---- Schema editor ---- */
+  .schema-editor {
+    border-top: 1px solid var(--outline-dim);
+    background: var(--surface-high);
+    flex-shrink: 0;
+    padding: 0;
+  }
+  .schema-textarea {
+    width: 100%;
+    background: var(--panel-bg);
+    color: var(--text);
+    border: none;
+    border-top: 1px solid var(--outline-dim);
+    font-family: 'Fira Code', monospace;
+    font-size: 1rem;
+    padding: 8px 10px;
+    resize: vertical;
+    outline: none;
+    min-height: 80px;
+    max-height: 200px;
+    box-sizing: border-box;
+  }
+  .schema-textarea::placeholder { color: var(--outline); }
+  .schema-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 4px 10px;
+    border-top: 1px solid var(--outline-dim);
+  }
+</style>
